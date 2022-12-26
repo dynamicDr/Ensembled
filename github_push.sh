@@ -6,6 +6,6 @@ else
   a="$1"
 fi
 
-git add .
-git commit -m $a
+git add D:/remote/Ensembled/.
+git commit -m "$a"
 git push -u origin main
