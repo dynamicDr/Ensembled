@@ -1,7 +1,7 @@
 
 if [ -z "$1" ]
 then
-  a="idle"
+  a="(No description)"
 else
   a="$1"
 fi
