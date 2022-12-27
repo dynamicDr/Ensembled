@@ -9,11 +9,14 @@ from rsoccer_gym.ssl.ssl_gym_base import SSLBaseEnv
 from rsoccer_gym.Utils import KDTree
 
 
-class SSLShootEnv(SSLBaseEnv):
+class SSL3v3Env(SSLBaseEnv):
     """The SSL robot needs to make a goal on a field with static defenders
 
-        Description:
 
+        Description:
+            The controlled robot is started on the field center and needs to
+            score on the positive side field, where there are 6 static defenders
+            while obeying div B rules
         Observation:
             Type: Box(4 + 8*n_robots_blue + 2*n_robots_yellow)
             Normalized Bounds to [-1.2, 1.2]
@@ -21,8 +24,6 @@ class SSLShootEnv(SSLBaseEnv):
             0->3     Ball [X, Y, V_x, V_y]
             4+i*7->10+i*7    id i(0-2) Blue [X, Y, sin(theta), cos(theta), v_x, v_y, v_theta]
             24+j*5,25+j*5     id j(0-2) Yellow Robot [X, Y, v_x, v_y, v_theta]
-            41      Possession Player None -1 Blue 0-2 Yellow 3-5
-            42      Active Player 0-2
         Actions:
             Type: Box(5, )
             Num     Action
@@ -45,11 +46,10 @@ class SSLShootEnv(SSLBaseEnv):
         super().__init__(field_type=field_type, n_robots_blue=3,
                          n_robots_yellow=3, time_step=0.025)
 
-        self.max_dribbler_time = 100
         self.action_space = gym.spaces.Box(low=-1, high=1,
                                            shape=(5,), dtype=np.float32)
 
-        n_obs = 4 + 7 * self.n_robots_blue + 5 * self.n_robots_yellow + 2
+        n_obs = 4 + 7 * self.n_robots_blue + 5 * self.n_robots_yellow
         self.observation_space = gym.spaces.Box(low=-self.NORM_BOUNDS,
                                                 high=self.NORM_BOUNDS,
                                                 shape=(n_obs,),
@@ -63,29 +63,24 @@ class SSLShootEnv(SSLBaseEnv):
         wheel_max_rad_s = 160
         max_steps = 1000
         self.energy_scale = ((wheel_max_rad_s * 4) * max_steps)
-        self.previous_ball_potential = None
 
         # Limit robot speeds
         self.max_v = 2.5
         self.max_w = 10
         self.kick_speed_x = 5.0
 
-        self.active_robot_idx = 0
-        self.possession_robot_idx = -1
-
-        self.dribbler_time = 0
-        self.commands = None
-        print('Environment initialized', "Obs:", n_obs)
+        self.c_robot_idx = 0
+        print('Environment initialized',"Obs:",n_obs)
 
     def reset(self):
         self.reward_shaping_total = None
-        self.dribbler_time = 0
         return super().reset()
 
     def step(self, action):
-        self.reward_shaping_total = None
         observation, reward, done, _ = super().step(action)
-
+        nearest_blue_robot = self._get_nearest_robot_idx([self.frame.ball.x, self.frame.ball.y], "blue")
+        print("nearest_blue_robot:", nearest_blue_robot)
+        self.c_robot_idx = nearest_blue_robot
         return observation, reward, done, self.reward_shaping_total
 
     def _frame_to_observations(self):
@@ -118,60 +113,26 @@ class SSLShootEnv(SSLBaseEnv):
             observation.append(self.norm_v(self.frame.robots_yellow[i].v_y))
             observation.append(self.norm_w(self.frame.robots_yellow[i].v_theta))
 
-        nearest_blue_robot, nearest_blue_robot_dist = self.get_nearest_robot_idx(
-            [self.frame.ball.x, self.frame.ball.y], "blue")
-        nearest_yellow_robot, nearest_yellow_robot_dist = self.get_nearest_robot_idx(
-            [self.frame.ball.x, self.frame.ball.y], "yellow")
-
-        threshold = 0.12
-
-        last_active = self.active_robot_idx
-        last_possession = self.possession_robot_idx
-
-        self.active_robot_idx = nearest_blue_robot
-        self.possession_robot_idx = -1
-        if self.commands is not None:
-            if nearest_blue_robot_dist <= nearest_yellow_robot_dist:
-                if nearest_blue_robot_dist <= threshold and self.commands[
-                    nearest_blue_robot].dribbler and self.__is_toward_ball("blue", nearest_blue_robot):
-                    self.possession_robot_idx = nearest_blue_robot
-            else:
-                if nearest_yellow_robot_dist <= threshold and self.commands[
-                    self.n_robots_blue + nearest_yellow_robot].dribbler and self.__is_toward_ball("yellow",
-                                                                                                  nearest_blue_robot):
-                    self.possession_robot_idx = 3 + nearest_yellow_robot
-
-            if self.possession_robot_idx == last_possession and self.possession_robot_idx == self.active_robot_idx:
-                self.dribbler_time += 1
-            else:
-                self.dribbler_time = 0
-
-        observation.append(self.possession_robot_idx)
-        observation.append(self.active_robot_idx)
-
-        # print("possession_robot:", self.possession_robot_idx)
-        # print("active_robot:", self.active_robot_idx)
-
         return np.array(observation, dtype=np.float32)
 
     def _get_commands(self, actions):
         commands = []
 
+        # Controlled robot
+        angle = self.frame.robots_blue[self.c_robot_idx].theta
+        v_x, v_y, v_theta = self.convert_actions(actions, np.deg2rad(angle))
+        cmd = Robot(yellow=False, id=0, v_x=v_x, v_y=v_y, v_theta=v_theta,
+                    kick_v_x=self.kick_speed_x if actions[3] > 0 else 0.,
+                    dribbler=True if actions[4] > 0 else False)
+        commands.append(cmd)
+
         # Blue robot
         for i in range(self.n_robots_blue):
-            if i != self.active_robot_idx:
+            if i != self.c_robot_idx:
                 actions = self.action_space.sample()
                 angle = self.frame.robots_blue[i].theta
                 v_x, v_y, v_theta = self.convert_actions(actions, np.deg2rad(angle))
                 cmd = Robot(yellow=False, id=i, v_x=v_x, v_y=v_y, v_theta=v_theta,
-                            kick_v_x=self.kick_speed_x if actions[3] > 0 else 0.,
-                            dribbler=True if actions[4] > 0 else False)
-                commands.append(cmd)
-            else:
-                # Controlled robot
-                angle = self.frame.robots_blue[self.active_robot_idx].theta
-                v_x, v_y, v_theta = self.convert_actions(actions, np.deg2rad(angle))
-                cmd = Robot(yellow=False, id=0, v_x=v_x, v_y=v_y, v_theta=v_theta,
                             kick_v_x=self.kick_speed_x if actions[3] > 0 else 0.,
                             dribbler=True if actions[4] > 0 else False)
                 commands.append(cmd)
@@ -185,7 +146,7 @@ class SSLShootEnv(SSLBaseEnv):
                         kick_v_x=self.kick_speed_x if actions[3] > 0 else 0.,
                         dribbler=True if actions[4] > 0 else False)
             commands.append(cmd)
-        self.commands = commands
+
         return commands
 
     def convert_actions(self, action, angle):
@@ -213,11 +174,8 @@ class SSLShootEnv(SSLBaseEnv):
                 'done_ball_out': 0,
                 'done_ball_out_right': 0,
                 'done_rbt_out': 0,
-                'done_long_dribbler': 0,
                 'ball_dist': 0,
                 'ball_grad': 0,
-                'towards_ball': 0,
-                'dribble_rw': 0,
                 'energy': 0
             }
         reward = 0
@@ -236,51 +194,43 @@ class SSLShootEnv(SSLBaseEnv):
         def robot_in_gk_area(rbt):
             return rbt.x > half_len - pen_len and abs(rbt.y) < half_pen_wid
 
-        if self.dribbler_time > self.max_dribbler_time:
-            done = True
-            self.reward_shaping_total['done_long_dribbler'] += 1
-            reward = -1
         # Check if robot exited field right side limits
         if robot.x < -0.2 or abs(robot.y) > half_wid:
             done = True
             self.reward_shaping_total['done_rbt_out'] += 1
-            reward = -1
-        # # If flag is set, end episode if robot enter gk area
-        # elif robot_in_gk_area(robot):
-        #     done = True
-        #     self.reward_shaping_total['rbt_in_gk_area'] += 1
+        # If flag is set, end episode if robot enter gk area
+        elif robot_in_gk_area(robot):
+            done = True
+            self.reward_shaping_total['rbt_in_gk_area'] += 1
         # Check ball for ending conditions
         elif ball.x < 0 or abs(ball.y) > half_wid:
             done = True
             self.reward_shaping_total['done_ball_out'] += 1
-            reward = -1
         elif ball.x > half_len:
             done = True
             if abs(ball.y) < half_goal_wid:
-                reward = 10
+                reward = 5
                 self.reward_shaping_total['goal'] += 1
             else:
                 reward = 0
                 self.reward_shaping_total['done_ball_out_right'] += 1
         elif self.last_frame is not None:
-            # ball_dist_rw = self.__ball_dist_rw() / self.ball_dist_scale
-            # self.reward_shaping_total['ball_dist'] += ball_dist_rw
+            ball_dist_rw = self.__ball_dist_rw() / self.ball_dist_scale
+            self.reward_shaping_total['ball_dist'] += ball_dist_rw
 
             ball_grad_rw = self.__ball_grad_rw() / self.ball_grad_scale
             self.reward_shaping_total['ball_grad'] += ball_grad_rw
 
-            toward_ball_rw = self.__towards_ball_rw()
-            self.reward_shaping_total['towards_ball'] += toward_ball_rw
-
-            dribble_shoot_rw = self.__dribble_shoot_rw(toward_ball_rw)
-            self.reward_shaping_total['dribble_rw'] += dribble_shoot_rw
-
             energy_rw = -self.__energy_pen() / self.energy_scale
             self.reward_shaping_total['energy'] += energy_rw
 
-            reward = reward + ball_grad_rw + 0.5 * toward_ball_rw + 0.2 * dribble_shoot_rw + energy_rw
+            reward = reward \
+                     + ball_dist_rw \
+                     + ball_grad_rw \
+                     + energy_rw
 
         done = done
+
         return reward, done
 
     def _get_initial_positions_frame(self):
@@ -291,7 +241,7 @@ class SSLShootEnv(SSLBaseEnv):
         half_pen_wid = self.field.penalty_width / 2
 
         def x():
-            return random.uniform(-half_len+0.1, half_len-0.1)
+            return random.uniform(0.2, half_len - 0.1)
 
         def y():
             return random.uniform(-half_wid + 0.1, half_wid - 0.1)
@@ -309,20 +259,13 @@ class SSLShootEnv(SSLBaseEnv):
         pos_frame.ball = Ball(x=x(), y=y())
         while in_gk_area(pos_frame.ball):
             pos_frame.ball = Ball(x=x(), y=y())
+
+        min_dist = 0.2
+
         places = KDTree()
         places.insert((pos_frame.ball.x, pos_frame.ball.y))
 
-        factor = (pos_frame.ball.y / abs(pos_frame.ball.y))
-        offset = 0.115 * factor
-        angle = random.uniform(0, 360)
-        pos_frame.robots_blue[0] = Robot(
-            x=pos_frame.ball.x, y=pos_frame.ball.y + offset, theta=angle
-        )
-        places.insert((pos_frame.ball.x, pos_frame.ball.y + offset))
-        min_dist = 0.2
         for i in range(self.n_robots_blue):
-            if i == 0:
-                continue
             pos = (x(), y())
             while places.get_nearest(pos)[1] < min_dist:
                 pos = (x(), y())
@@ -339,6 +282,26 @@ class SSLShootEnv(SSLBaseEnv):
             pos_frame.robots_yellow[i] = Robot(x=pos[0], y=pos[1], theta=theta())
 
         return pos_frame
+
+    def _get_nearest_robot_idx(self, target, team, except_idx=None):
+        robots_distance_to_target = {}
+        for idx in range(self.n_robots_blue if team == "blue" else self.n_robots_yellow):
+            target = np.array(target)
+            if team == "blue":
+                robot = np.array([self.frame.robots_blue[idx].x,
+                                  self.frame.robots_blue[idx].y])
+            elif team == "yellow":
+                robot = np.array([self.frame.robots_yellow[idx].x,
+                                  self.frame.robots_yellow[idx].y])
+            else:
+                Exception("team must be blue or yellow")
+            robot_distance_to_target = np.sqrt(sum((robot - target) ** 2 for robot, target in zip(robot, target)))
+            robots_distance_to_target[idx] = robot_distance_to_target
+        sorted_list = sorted(robots_distance_to_target.items(), key=lambda kv: [kv[1], kv[0]])
+        if except_idx is not None:
+            if sorted_list[0][0] == except_idx:
+                return sorted_list[1][0]
+        return sorted_list[0][0]
 
     def __ball_dist_rw(self):
         assert (self.last_frame is not None)
@@ -369,35 +332,31 @@ class SSLShootEnv(SSLBaseEnv):
         return np.clip(ball_dist_rw, -1, 1)
 
     def __ball_grad_rw(self):
-        '''Calculate ball potential gradient
-        Difference of potential of the ball in time_step seconds.
-        '''
-        # Calculate ball potential
-        length_cm = self.field.length * 100
-        half_lenght = (self.field.length / 2.0) \
-                      + self.field.goal_depth
+        assert (self.last_frame is not None)
 
-        # distance to defence
-        dx_d = (half_lenght + self.frame.ball.x) * 100
-        # distance to attack
-        dx_a = (half_lenght - self.frame.ball.x) * 100
-        dy = (self.frame.ball.y) * 100
+        # Goal pos
+        goal = np.array([self.field.length / 2, 0.])
 
-        dist_1 = -math.sqrt(dx_a ** 2 + 2 * dy ** 2)
-        dist_2 = math.sqrt(dx_d ** 2 + 2 * dy ** 2)
-        ball_potential = ((dist_1 + dist_2) / length_cm - 1) / 2
+        # Calculate previous ball dist
+        last_ball = self.last_frame.ball
+        ball = self.frame.ball
+        last_ball_pos = np.array([last_ball.x, last_ball.y])
+        last_ball_dist = np.linalg.norm(goal - last_ball_pos)
 
-        grad_ball_potential = 0
-        # Calculate ball potential gradient
-        # = actual_potential - previous_potential
-        if self.previous_ball_potential is not None:
-            diff = ball_potential - self.previous_ball_potential
-            grad_ball_potential = np.clip(diff * 3 / self.time_step,
-                                          -5.0, 5.0)
+        # Calculate new ball dist
+        ball_pos = np.array([ball.x, ball.y])
+        ball_dist = np.linalg.norm(goal - ball_pos)
 
-        self.previous_ball_potential = ball_potential
+        ball_dist_rw = last_ball_dist - ball_dist
 
-        return grad_ball_potential
+        if ball_dist_rw > 1:
+            print("ball_dist -> ", ball_dist_rw)
+            print(self.frame.ball)
+            print(self.frame.robots_blue)
+            print(self.frame.robots_yellow)
+            print("===============================")
+
+        return np.clip(ball_dist_rw, -1, 1)
 
     def __energy_pen(self):
         robot = self.frame.robots_blue[0]
@@ -409,64 +368,3 @@ class SSLShootEnv(SSLBaseEnv):
                  + abs(robot.v_wheel3)
 
         return energy
-
-    def __towards_ball_rw(self):
-        theta = math.radians(self.frame.robots_blue[0].theta)
-        Xr, Yr, theta, Xb, Yb = self.frame.robots_blue[0].x, self.frame.robots_blue[
-            0].y, theta, self.frame.ball.x, self.frame.ball.y
-
-        # 计算机器人-球连线方向的角度
-        line_angle = math.atan2(Yb - Yr, Xb - Xr)
-
-        # 计算摄像头方向和机器人-球连线方向之间的夹角
-        angle = line_angle - theta
-
-        # 将夹角转换为[-π,π]区间内的值
-        while angle < -math.pi:
-            angle += 2 * math.pi
-        while angle > math.pi:
-            angle -= 2 * math.pi
-
-        value = math.pi - abs(angle)
-        normalized_value = (value - 0) / (math.pi - 0)
-        if normalized_value > 0.9:
-            normalized_value = 1
-        return normalized_value
-
-    def __is_toward_ball(self, team, idx):
-        if team == "blue":
-            Xr, Yr = self.frame.robots_blue[idx].x, self.frame.robots_blue[idx].y
-            theta = math.radians(self.frame.robots_blue[idx].theta)
-        if team == "yellow":
-            theta = math.radians(self.frame.robots_yellow[idx].theta)
-            Xr, Yr = self.frame.robots_yellow[idx].x, self.frame.robots_yellow[idx].y
-        Xb, Yb = self.frame.ball.x, self.frame.ball.y
-
-        # 计算机器人-球连线方向的角度
-        line_angle = math.atan2(Yb - Yr, Xb - Xr)
-
-        # 计算摄像头方向和机器人-球连线方向之间的夹角
-        angle = line_angle - theta
-
-        # 将夹角转换为[-π,π]区间内的值
-        while angle < -math.pi:
-            angle += 2 * math.pi
-        while angle > math.pi:
-            angle -= 2 * math.pi
-
-        value = math.pi - abs(angle)
-        normalized_value = (value - 0) / (math.pi - 0)
-        if normalized_value >= 0.9:
-            return True
-        else:
-            return False
-
-    def __dribble_shoot_rw(self, toward_ball_rw):
-        rbt = self.frame.robots_blue[self.active_robot_idx]
-        if self.possession_robot_idx == self.active_robot_idx:
-            if self.frame.robots_blue[self.active_robot_idx].kick_v_x >=0 or self.frame.robots_blue[self.active_robot_idx].kick_v_z >=0:
-                return 0.2
-            else:
-                return 1
-        else:
-            return 0

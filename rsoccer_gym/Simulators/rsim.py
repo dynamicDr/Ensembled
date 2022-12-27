@@ -35,8 +35,6 @@ class RSim:
 
     def reset(self, frame: Frame):
         placement_pos = self._placement_dict_from_frame(frame)
-        print(placement_pos["blue_robots_pos"])
-        print(placement_pos["yellow_robots_pos"])
         self.simulator.reset(placement_pos["ball_pos"], placement_pos["blue_robots_pos"], placement_pos["yellow_robots_pos"])
 
     def stop(self):

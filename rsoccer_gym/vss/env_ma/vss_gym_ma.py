@@ -8,9 +8,6 @@ from typing import Dict, List
 import gym
 import numpy as np
 import torch
-
-from coach_mmoe import Coach_MMOE, Ramdom_Coach
-from matd3 import MATD3
 from rsoccer_gym.Entities import Frame, Robot, Ball
 from rsoccer_gym.Utils import KDTree
 from rsoccer_gym.Utils.Utils import OrnsteinUhlenbeckAction

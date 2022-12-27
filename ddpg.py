@@ -1,77 +1,127 @@
 import numpy as np
-import os
-
+import numpy.random
 import torch
 import torch.nn as nn
 from torch.optim import Adam
 
-from model import (Actor, Critic)
-from memory import SequentialMemory
-from random_process import OrnsteinUhlenbeckProcess
-from util import *
-
-# from ipdb import set_trace as debug
+from utils import *
 
 criterion = nn.MSELoss()
 
 
+def fanin_init(size, fanin=None):
+    fanin = fanin or size[0]
+    v = 1. / np.sqrt(fanin)
+    return torch.Tensor(size).uniform_(-v, v)
+
+
+class Actor(nn.Module):
+    def __init__(self, nb_states, nb_actions, hidden1=400, hidden2=300, init_w=3e-3):
+        super(Actor, self).__init__()
+        self.fc1 = nn.Linear(nb_states, hidden1)
+        self.fc2 = nn.Linear(hidden1, hidden2)
+        self.fc3 = nn.Linear(hidden2, nb_actions)
+        self.relu = nn.ReLU()
+        self.tanh = nn.Tanh()
+        self.init_weights(init_w)
+
+    def init_weights(self, init_w):
+        self.fc1.weight.data = fanin_init(self.fc1.weight.data.size())
+        self.fc2.weight.data = fanin_init(self.fc2.weight.data.size())
+        self.fc3.weight.data.uniform_(-init_w, init_w)
+
+    def forward(self, x):
+        out = self.fc1(x)
+        out = self.relu(out)
+        out = self.fc2(out)
+        out = self.relu(out)
+        out = self.fc3(out)
+        out = self.tanh(out)
+        return out
+
+
+class Critic(nn.Module):
+    def __init__(self, nb_states, nb_actions, hidden1=400, hidden2=300, init_w=3e-3):
+        super(Critic, self).__init__()
+        self.fc1 = nn.Linear(nb_states, hidden1)
+        self.fc2 = nn.Linear(hidden1 + nb_actions, hidden2)
+        self.fc3 = nn.Linear(hidden2, 1)
+        self.relu = nn.ReLU()
+        self.init_weights(init_w)
+
+    def init_weights(self, init_w):
+        self.fc1.weight.data = fanin_init(self.fc1.weight.data.size())
+        self.fc2.weight.data = fanin_init(self.fc2.weight.data.size())
+        self.fc3.weight.data.uniform_(-init_w, init_w)
+
+    def forward(self, xs):
+        x, a = xs
+        out = self.fc1(x)
+        out = self.relu(out)
+        # debug()
+        out = self.fc2(torch.cat([out, a], 1))
+        out = self.relu(out)
+        out = self.fc3(out)
+        return out
+
+
 class DDPG(object):
-    def __init__(self, args, writer):
+    def __init__(self, args):
 
-        if args.seed > 0:
-            self.seed(args.seed)
+        self.obs_dim = args.obs_dim
+        self.action_dim = args.action_dim
 
-        self.nb_states = args.obs_dim
-        self.nb_actions = args.action_dim
+        self.use_grad_clip = args.use_grad_clip
 
         # Create Actor and Critic Network
         net_cfg = {
-            'hidden1': args.hidden1,
-            'hidden2': args.hidden2,
-            'init_w': args.init_w
+            'hidden1': args.hidden_dim_1,
+            'hidden2': args.hidden_dim_2
         }
-        self.actor = Actor(self.nb_states, self.nb_actions, **net_cfg)
-        self.actor_target = Actor(self.nb_states, self.nb_actions, **net_cfg)
-        self.actor_optim = Adam(self.actor.parameters(), lr=args.prate)
+        self.actor = Actor(self.obs_dim, self.action_dim, **net_cfg)
+        self.actor_target = Actor(self.obs_dim, self.action_dim, **net_cfg)
+        self.actor_optim = Adam(self.actor.parameters(), lr=args.lr_a)
 
-        self.critic = Critic(self.nb_states, self.nb_actions, **net_cfg)
-        self.critic_target = Critic(self.nb_states, self.nb_actions, **net_cfg)
-        self.critic_optim = Adam(self.critic.parameters(), lr=args.rate)
+        self.critic = Critic(self.obs_dim, self.action_dim, **net_cfg)
+        self.critic_target = Critic(self.obs_dim, self.action_dim, **net_cfg)
+        self.critic_optim = Adam(self.critic.parameters(), lr=args.lr_c)
 
         hard_update(self.actor_target, self.actor)  # Make sure target is with the same weight
         hard_update(self.critic_target, self.critic)
 
-        self.random_process = OrnsteinUhlenbeckProcess(size=self.nb_actions, theta=args.ou_theta, mu=args.ou_mu,
+        self.random_process = OrnsteinUhlenbeckProcess(size=self.action_dim, theta=args.ou_theta, mu=args.ou_mu,
                                                        sigma=args.ou_sigma)
         # Hyper-parameters
-        self.batch_size = args.bsize
+        self.batch_size = args.batch_size
         self.tau = args.tau
-        self.discount = args.discount
-        self.depsilon = 1.0 / args.epsilon
+        self.discount = args.gamma
 
         #
-        self.epsilon = 1.0
         self.s_t = None  # Most recent state
         self.a_t = None  # Most recent action
         self.is_training = True
-        self.max_action = args.coach_max_action
+        self.max_action = args.max_action
 
-        #
+        # Noise
+        self.epsilon = args.epsilon_init
+        self.epsilon_min = args.epsilon_min
+        self.epsilon_decay = args.epsilon_decay
         if USE_CUDA: self.cuda()
 
-    def train(self,replay_buffer):
+    def update_policy(self, replay_buffer):
+
         # Sample batch
-        obs_batch, action_batch, reward_batch,next_obs_batch, done_batch = replay_buffer.sample
+        obs_batch, action_batch, reward_batch, next_obs_batch, done_batch = replay_buffer.sample()
 
         # Prepare for the target q batch
         next_q_values = self.critic_target([
-            to_tensor(next_state_batch, volatile=True),
-            self.actor_target(to_tensor(next_state_batch, volatile=True)),
+            to_tensor(next_obs_batch, volatile=True),
+            self.actor_target(to_tensor(next_obs_batch, volatile=True)),
         ])
         next_q_values.volatile = False
 
         target_q_batch = to_tensor(reward_batch) + \
-                         self.discount * to_tensor(done_batch.astype(np.float)) * next_q_values
+                         self.discount * to_tensor(done_batch) * next_q_values
 
         # Critic update
         self.critic.zero_grad()
@@ -80,11 +130,12 @@ class DDPG(object):
 
         value_loss = criterion(q_batch, target_q_batch)
         value_loss.backward()
+        if self.use_grad_clip:
+            torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 10.0)
         self.critic_optim.step()
 
         # Actor update
         self.actor.zero_grad()
-
         policy_loss = -self.critic([
             to_tensor(obs_batch),
             self.actor(to_tensor(obs_batch))
@@ -92,6 +143,8 @@ class DDPG(object):
 
         policy_loss = policy_loss.mean()
         policy_loss.backward()
+        if self.use_grad_clip:
+            torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 10.0)
         self.actor_optim.step()
 
         # Target update
@@ -110,24 +163,23 @@ class DDPG(object):
         self.critic.cuda()
         self.critic_target.cuda()
 
-    def observe(self, r_t, s_t1, done):
-        if self.is_training:
-            self.memory.append(self.s_t, self.a_t, r_t, done)
-            self.s_t = s_t1
-
     def random_action(self):
-        action = np.random.uniform(-1., 1., self.nb_actions)
+        action = np.random.uniform(-self.max_action, self.max_action, self.action_dim)
         self.a_t = action
         return action
 
-    def select_action(self, s_t, noise_std=0, decay_epsilon=True):
+    def select_action(self, s_t, decay_epsilon=True):
         action = to_numpy(
             self.actor(to_tensor(np.array([s_t])))
         ).squeeze(0)
-        action += self.is_training * max(self.epsilon, 0) * self.random_process.sample()
-        action = (action + np.random.normal(0, noise_std, size=self.action_dim)).clip(-self.max_action, self.max_action)
+        if numpy.random.rand() < self.epsilon:
+            action += self.random_process.sample()
+        else:
+            action = np.clip(action, -self.max_action, self.max_action)
+
+        # Decay noise_std
         if decay_epsilon:
-            self.epsilon -= self.depsilon
+            self.epsilon = max(self.epsilon-self.epsilon_decay, self.epsilon_min)
 
         self.a_t = action
         return action
@@ -135,17 +187,6 @@ class DDPG(object):
     def reset(self, obs):
         self.s_t = obs
         self.random_process.reset_states()
-
-    def load_weights(self, output):
-        if output is None: return
-
-        self.actor.load_state_dict(
-            torch.load('{}/actor.pkl'.format(output))
-        )
-
-        self.critic.load_state_dict(
-            torch.load('{}/critic.pkl'.format(output))
-        )
 
     def seed(self, s):
         torch.manual_seed(s)

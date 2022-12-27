@@ -20,7 +20,7 @@ class ReplayBuffer(object):
         self.buffer_a[self.count] = a
         self.buffer_r[self.count] = r
         self.buffer_obs_next[self.count] = obs_next
-        self.buffer_done[self.count] = done
+        self.buffer_done[self.count] = 1 if done else 0
         self.count = (self.count + 1) % self.buffer_size  # When the 'count' reaches max_size, it will be reset to 0.
         self.current_size = min(self.current_size + 1, self.buffer_size)
 
