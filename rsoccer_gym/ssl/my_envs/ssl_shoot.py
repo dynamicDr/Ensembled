@@ -212,7 +212,6 @@ class SSLShootEnv(SSLBaseEnv):
                 'done_long_dribbler': 0,
                 'rw_ball_grad': 0,
                 'rw_towards_ball': 0,
-                'rw_dribble': 0,
                 'rw_energy': 0
             }
         reward = 0
@@ -271,7 +270,7 @@ class SSLShootEnv(SSLBaseEnv):
             energy_rw = -self.__energy_pen() / self.energy_scale
             self.reward_shaping_total['rw_energy'] += energy_rw
 
-            reward = reward + ball_grad_rw + 0.5 * toward_ball_rw + energy_rw
+            reward = ball_grad_rw + 0.5 * toward_ball_rw + energy_rw
 
         done = done
         return reward, done

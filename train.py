@@ -41,9 +41,12 @@ class Runner:
         self.replay_buffer = ReplayBuffer(self.args)
 
     def run(self):
+        reward_dict = {}
         while self.episode < self.args.max_episode:
             # For each episode..
             obs = self.env.reset()
+            for r in reward_dict:
+                reward_dict[r] = 0
             terminate = False
             done = False
             episode_step = 0
@@ -55,7 +58,9 @@ class Runner:
                 if args.write_rewards:
                     for r in info:
                         if r.startswith("rw_"):
-                            self.writer.add_scalar(r, info[r], global_step=self.total_steps)
+                            if r not in reward_dict:
+                                reward_dict[r] = 0
+                            reward_dict[r] += info[r]
                 if self.args.display:
                     self.env.render()
 
@@ -75,6 +80,9 @@ class Runner:
                     terminate = True
 
             self.episode += 1
+            if args.write_rewards:
+                for r in reward_dict:
+                    self.writer.add_scalar(r, reward_dict[r], global_step=self.episode)
 
             # Save model
             if self.episode % self.args.save_rate == 0 and not self.args.display:
@@ -130,7 +138,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     args.epsilon_decay = (args.epsilon_init - args.epsilon_min) / args.epsilon_decay_steps
 
-    number = 4
+    number = 5
     runner = Runner(args, number=number)
 
     # Save args
