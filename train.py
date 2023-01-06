@@ -54,7 +54,7 @@ class Runner:
                 obs_next, reward, done, info = self.env.step(copy.deepcopy(action))
                 if args.write_rewards:
                     for r in info:
-                        if r.startwith("rw_"):
+                        if r.startswith("rw_"):
                             self.writer.add_scalar(r, info[r], global_step=self.total_steps)
                 if self.args.display:
                     self.env.render()
@@ -130,7 +130,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     args.epsilon_decay = (args.epsilon_init - args.epsilon_min) / args.epsilon_decay_steps
 
-    number = 7
+    number = 4
     runner = Runner(args, number=number)
 
     # Save args

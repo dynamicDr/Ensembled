@@ -18,13 +18,11 @@ for i in range(1):
             break
         # action = env.action_space.sample()
         if frame<50:
-            action= np.array([0,0,-0.5,0,1])
+            action= np.array([0,0,-0.5,0])
         else:
-            action = np.array([0, 0,- 0.5, 1,0])
+            action = np.array([0, 0,-0.5,1])
         next_state, reward, done, info = env.step(action)
         env.render()
-        reward = 0
-        for r in info:
-            reward += info[r]
-        print("ball grad",info["ball_grad"])
-        print("frame",frame,"reward",reward)
+        print(reward)
+        # print("frame",frame,"reward",reward)
+    print(info)

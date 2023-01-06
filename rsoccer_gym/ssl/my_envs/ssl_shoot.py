@@ -24,13 +24,12 @@ class SSLShootEnv(SSLBaseEnv):
             41      Possession Player None -1 Blue 0-2 Yellow 3-5
             42      Active Player 0-2
         Actions:
-            Type: Box(5, )
+            Type: Box(4, )
             Num     Action
             0       id 0 Blue Global X Direction Speed  (%)
             1       id 0 Blue Global Y Direction Speed  (%)
             2       id 0 Blue Angular Speed  (%)
             3       id 0 Blue Kick x Speed  (%)
-            4       id 0 Blue Dribbler  (%) (true if % is positive)
 
         Reward:
             1 if goal
@@ -47,7 +46,7 @@ class SSLShootEnv(SSLBaseEnv):
 
         self.max_dribbler_time = 100
         self.action_space = gym.spaces.Box(low=-1, high=1,
-                                           shape=(5,), dtype=np.float32)
+                                           shape=(4,), dtype=np.float32)
 
         n_obs = 4 + 7 * self.n_robots_blue + 5 * self.n_robots_yellow + 2
         self.observation_space = gym.spaces.Box(low=-self.NORM_BOUNDS,
@@ -70,7 +69,9 @@ class SSLShootEnv(SSLBaseEnv):
         self.max_w = 10
         self.kick_speed_x = 5.0
 
+
         self.active_robot_idx = 0
+        self.last_possession_robot_id = -1
         self.possession_robot_idx = -1
 
         self.dribbler_time = 0
@@ -123,10 +124,8 @@ class SSLShootEnv(SSLBaseEnv):
         nearest_yellow_robot, nearest_yellow_robot_dist = self.get_nearest_robot_idx(
             [self.frame.ball.x, self.frame.ball.y], "yellow")
 
-        threshold = 0.12
-
-        last_active = self.active_robot_idx
-        last_possession = self.possession_robot_idx
+        threshold = 0.15
+        self.last_possession = self.possession_robot_idx
 
         self.active_robot_idx = nearest_blue_robot
         self.possession_robot_idx = -1
@@ -141,7 +140,7 @@ class SSLShootEnv(SSLBaseEnv):
                                                                                                   nearest_blue_robot):
                     self.possession_robot_idx = 3 + nearest_yellow_robot
 
-            if self.possession_robot_idx == last_possession and self.possession_robot_idx == self.active_robot_idx:
+            if self.possession_robot_idx == self.last_possession and self.possession_robot_idx == self.active_robot_idx:
                 self.dribbler_time += 1
             else:
                 self.dribbler_time = 0
@@ -165,7 +164,7 @@ class SSLShootEnv(SSLBaseEnv):
                 v_x, v_y, v_theta = self.convert_actions(actions, np.deg2rad(angle))
                 cmd = Robot(yellow=False, id=i, v_x=v_x, v_y=v_y, v_theta=v_theta,
                             kick_v_x=self.kick_speed_x if actions[3] > 0 else 0.,
-                            dribbler=True if actions[4] > 0 else False)
+                            dribbler=True)
                 commands.append(cmd)
             else:
                 # Controlled robot
@@ -173,7 +172,7 @@ class SSLShootEnv(SSLBaseEnv):
                 v_x, v_y, v_theta = self.convert_actions(actions, np.deg2rad(angle))
                 cmd = Robot(yellow=False, id=0, v_x=v_x, v_y=v_y, v_theta=v_theta,
                             kick_v_x=self.kick_speed_x if actions[3] > 0 else 0.,
-                            dribbler=True if actions[4] > 0 else False)
+                            dribbler=True)
                 commands.append(cmd)
 
         # Yellow robot
@@ -183,7 +182,7 @@ class SSLShootEnv(SSLBaseEnv):
             v_x, v_y, v_theta = self.convert_actions(actions, np.deg2rad(angle))
             cmd = Robot(yellow=True, id=i, v_x=v_x, v_y=v_y, v_theta=v_theta,
                         kick_v_x=self.kick_speed_x if actions[3] > 0 else 0.,
-                        dribbler=True if actions[4] > 0 else False)
+                        dribbler=True)
             commands.append(cmd)
         self.commands = commands
         return commands
@@ -209,10 +208,7 @@ class SSLShootEnv(SSLBaseEnv):
         if self.reward_shaping_total is None:
             self.reward_shaping_total = {
                 'goal': 0,
-                'rbt_in_gk_area': 0,
                 'done_ball_out': 0,
-                'done_ball_out_right': 0,
-                'done_rbt_out': 0,
                 'done_long_dribbler': 0,
                 'rw_ball_grad': 0,
                 'rw_towards_ball': 0,
@@ -239,28 +235,26 @@ class SSLShootEnv(SSLBaseEnv):
             done = True
             self.reward_shaping_total['done_long_dribbler'] += 1
             reward = -1
-        # Check if robot exited field right side limits
-        if robot.x < -0.2 or abs(robot.y) > half_wid:
-            done = True
-            self.reward_shaping_total['done_rbt_out'] += 1
-            reward = -1
-        # # If flag is set, end episode if robot enter gk area
-        # elif robot_in_gk_area(robot):
-        #     done = True
-        #     self.reward_shaping_total['rbt_in_gk_area'] += 1
-        # Check ball for ending conditions
-        elif ball.x < 0 or abs(ball.y) > half_wid:
+        elif abs(ball.y) > half_wid:
             done = True
             self.reward_shaping_total['done_ball_out'] += 1
             reward = -1
+        elif ball.x < -half_len or abs(ball.y) > half_wid:
+            done = True
+            if abs(ball.y) < half_goal_wid:
+                reward = -10
+                self.reward_shaping_total['goal'] -= 1
+            else:
+                self.reward_shaping_total['done_ball_out'] += 1
+                reward = -1
         elif ball.x > half_len:
             done = True
             if abs(ball.y) < half_goal_wid:
                 reward = 10
                 self.reward_shaping_total['goal'] += 1
             else:
-                reward = 0
-                self.reward_shaping_total['done_ball_out_right'] += 1
+                reward = -1
+                self.reward_shaping_total['done_ball_out'] += 1
         elif self.last_frame is not None:
             # ball_dist_rw = self.__ball_dist_rw() / self.ball_dist_scale
             # self.reward_shaping_total['ball_dist'] += ball_dist_rw
@@ -271,13 +265,13 @@ class SSLShootEnv(SSLBaseEnv):
             toward_ball_rw = self.__towards_ball_rw()
             self.reward_shaping_total['rw_towards_ball'] += toward_ball_rw
 
-            dribble_shoot_rw = self.__dribble_shoot_rw(toward_ball_rw)
-            self.reward_shaping_total['rw_dribble'] += dribble_shoot_rw
+            # dribble_shoot_rw = self.__dribble_shoot_rw()
+            # self.reward_shaping_total['rw_dribble'] += dribble_shoot_rw
 
             energy_rw = -self.__energy_pen() / self.energy_scale
             self.reward_shaping_total['rw_energy'] += energy_rw
 
-            reward = reward + ball_grad_rw + 0.5 * toward_ball_rw + 0.2 * dribble_shoot_rw + energy_rw
+            reward = reward + ball_grad_rw + 0.5 * toward_ball_rw + energy_rw
 
         done = done
         return reward, done
@@ -290,10 +284,10 @@ class SSLShootEnv(SSLBaseEnv):
         half_pen_wid = self.field.penalty_width / 2
 
         def x():
-            return random.uniform(-half_len+0.1, half_len-0.1)
+            return random.uniform(-self.field.length / 2+0.2,self.field.length / 2-0.2)
 
         def y():
-            return random.uniform(-half_wid + 0.1, half_wid - 0.1)
+            return random.uniform(-self.field.width/ 2+0.2,self.field.width / 2-0.2)
 
         def theta():
             return random.uniform(0, 360)
@@ -460,12 +454,11 @@ class SSLShootEnv(SSLBaseEnv):
         else:
             return False
 
-    def __dribble_shoot_rw(self, toward_ball_rw):
-        rbt = self.frame.robots_blue[self.active_robot_idx]
+    def __dribble_shoot_rw(self):
+
         if self.possession_robot_idx == self.active_robot_idx:
-            if self.frame.robots_blue[self.active_robot_idx].kick_v_x >=0 or self.frame.robots_blue[self.active_robot_idx].kick_v_z >=0:
                 return 0.2
-            else:
+        elif self.commands[self.active_robot_idx].kick_v_x > 0 and self.last_possession ==self.active_robot_idx:
                 return 1
         else:
             return 0
