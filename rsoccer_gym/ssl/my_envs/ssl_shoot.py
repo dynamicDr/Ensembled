@@ -21,8 +21,6 @@ class SSLShootEnv(SSLBaseEnv):
             0->3     Ball [X, Y, V_x, V_y]
             4+i*7->10+i*7    id i(0-2) Blue [X, Y, sin(theta), cos(theta), v_x, v_y, v_theta]
             24+j*5,25+j*5     id j(0-2) Yellow Robot [X, Y, v_x, v_y, v_theta]
-            41      Possession Player None -1 Blue 0-2 Yellow 3-5
-            42      Active Player 0-2
         Actions:
             Type: Box(4, )
             Num     Action
@@ -48,7 +46,7 @@ class SSLShootEnv(SSLBaseEnv):
         self.action_space = gym.spaces.Box(low=-1, high=1,
                                            shape=(4,), dtype=np.float32)
 
-        n_obs = 4 + 7 * self.n_robots_blue + 5 * self.n_robots_yellow + 2
+        n_obs = 4 + 7 * self.n_robots_blue + 5 * self.n_robots_yellow
         self.observation_space = gym.spaces.Box(low=-self.NORM_BOUNDS,
                                                 high=self.NORM_BOUNDS,
                                                 shape=(n_obs,),
@@ -124,32 +122,30 @@ class SSLShootEnv(SSLBaseEnv):
         nearest_yellow_robot, nearest_yellow_robot_dist = self.get_nearest_robot_idx(
             [self.frame.ball.x, self.frame.ball.y], "yellow")
 
-        threshold = 0.15
-        self.last_possession = self.possession_robot_idx
+        # threshold = 0.15
+        # self.last_possession = self.possession_robot_idx
+        #
+        # self.active_robot_idx = nearest_blue_robot
+        # self.possession_robot_idx = -1
+        # if self.commands is not None:
+        #     if nearest_blue_robot_dist <= nearest_yellow_robot_dist:
+        #         if nearest_blue_robot_dist <= threshold and self.commands[
+        #             nearest_blue_robot].dribbler and self.__is_toward_ball("blue", nearest_blue_robot):
+        #             self.possession_robot_idx = nearest_blue_robot
+        #     else:
+        #         if nearest_yellow_robot_dist <= threshold and self.commands[
+        #             self.n_robots_blue + nearest_yellow_robot].dribbler and self.__is_toward_ball("yellow",
+        #                                                                                           nearest_blue_robot):
+        #             self.possession_robot_idx = 3 + nearest_yellow_robot
+        #
+        #     if self.possession_robot_idx == self.last_possession and self.possession_robot_idx == self.active_robot_idx:
+        #         self.dribbler_time += 1
+        #     else:
+        #         self.dribbler_time = 0
+        #
+        # observation.append(self.possession_robot_idx)
+        # observation.append(self.active_robot_idx)
 
-        self.active_robot_idx = nearest_blue_robot
-        self.possession_robot_idx = -1
-        if self.commands is not None:
-            if nearest_blue_robot_dist <= nearest_yellow_robot_dist:
-                if nearest_blue_robot_dist <= threshold and self.commands[
-                    nearest_blue_robot].dribbler and self.__is_toward_ball("blue", nearest_blue_robot):
-                    self.possession_robot_idx = nearest_blue_robot
-            else:
-                if nearest_yellow_robot_dist <= threshold and self.commands[
-                    self.n_robots_blue + nearest_yellow_robot].dribbler and self.__is_toward_ball("yellow",
-                                                                                                  nearest_blue_robot):
-                    self.possession_robot_idx = 3 + nearest_yellow_robot
-
-            if self.possession_robot_idx == self.last_possession and self.possession_robot_idx == self.active_robot_idx:
-                self.dribbler_time += 1
-            else:
-                self.dribbler_time = 0
-
-        observation.append(self.possession_robot_idx)
-        observation.append(self.active_robot_idx)
-
-        # print("possession_robot:", self.possession_robot_idx)
-        # print("active_robot:", self.active_robot_idx)
 
         return np.array(observation, dtype=np.float32)
 
@@ -159,11 +155,11 @@ class SSLShootEnv(SSLBaseEnv):
         # Blue robot
         for i in range(self.n_robots_blue):
             if i != self.active_robot_idx:
-                actions = self.action_space.sample()
+                random_actions = self.action_space.sample()
                 angle = self.frame.robots_blue[i].theta
-                v_x, v_y, v_theta = self.convert_actions(actions, np.deg2rad(angle))
+                v_x, v_y, v_theta = self.convert_actions(random_actions, np.deg2rad(angle))
                 cmd = Robot(yellow=False, id=i, v_x=v_x, v_y=v_y, v_theta=v_theta,
-                            kick_v_x=self.kick_speed_x if actions[3] > 0 else 0.,
+                            kick_v_x=self.kick_speed_x if random_actions[3] > 0 else 0.,
                             dribbler=True)
                 commands.append(cmd)
             else:
@@ -177,17 +173,18 @@ class SSLShootEnv(SSLBaseEnv):
 
         # Yellow robot
         for i in range(self.n_robots_yellow):
-            actions = self.action_space.sample()
+            random_actions = self.action_space.sample()
             angle = self.frame.robots_yellow[i].theta
-            v_x, v_y, v_theta = self.convert_actions(actions, np.deg2rad(angle))
+            v_x, v_y, v_theta = self.convert_actions(random_actions, np.deg2rad(angle))
             cmd = Robot(yellow=True, id=i, v_x=v_x, v_y=v_y, v_theta=v_theta,
-                        kick_v_x=self.kick_speed_x if actions[3] > 0 else 0.,
+                        kick_v_x=self.kick_speed_x if random_actions[3] > 0 else 0.,
                         dribbler=True)
             commands.append(cmd)
         self.commands = commands
         return commands
 
     def convert_actions(self, action, angle):
+
         """Denormalize, clip to absolute max and convert to local"""
         # Denormalize
         v_x = action[0] * self.max_v
@@ -201,7 +198,6 @@ class SSLShootEnv(SSLBaseEnv):
         v_norm = np.linalg.norm([v_x, v_y])
         c = v_norm < self.max_v or self.max_v / v_norm
         v_x, v_y = v_x * c, v_y * c
-
         return v_x, v_y, v_theta
 
     def _calculate_reward_and_done(self):
@@ -209,8 +205,10 @@ class SSLShootEnv(SSLBaseEnv):
             self.reward_shaping_total = {
                 'goal': 0,
                 'done_ball_out': 0,
+                'done_robot_out': 0,
                 'done_long_dribbler': 0,
                 'rw_ball_grad': 0,
+                'rw_move_to_ball': 0,
                 'rw_towards_ball': 0,
                 'rw_energy': 0
             }
@@ -227,17 +225,18 @@ class SSLShootEnv(SSLBaseEnv):
         ball = self.frame.ball
         robot = self.frame.robots_blue[0]
 
-        def robot_in_gk_area(rbt):
-            return rbt.x > half_len - pen_len and abs(rbt.y) < half_pen_wid
-
         if self.dribbler_time > self.max_dribbler_time:
             done = True
             self.reward_shaping_total['done_long_dribbler'] += 1
-            reward = -1
+            reward = -5
+        elif abs(robot.y) > half_wid or abs(robot.x) > half_len:
+            done = True
+            self.reward_shaping_total['done_robot_out'] += 1
+            reward = -5
         elif abs(ball.y) > half_wid:
             done = True
             self.reward_shaping_total['done_ball_out'] += 1
-            reward = -1
+            reward = -5
         elif ball.x < -half_len or abs(ball.y) > half_wid:
             done = True
             if abs(ball.y) < half_goal_wid:
@@ -245,32 +244,31 @@ class SSLShootEnv(SSLBaseEnv):
                 self.reward_shaping_total['goal'] -= 1
             else:
                 self.reward_shaping_total['done_ball_out'] += 1
-                reward = -1
+                reward = -5
         elif ball.x > half_len:
             done = True
             if abs(ball.y) < half_goal_wid:
                 reward = 10
                 self.reward_shaping_total['goal'] += 1
             else:
-                reward = -1
+                reward = -5
                 self.reward_shaping_total['done_ball_out'] += 1
         elif self.last_frame is not None:
-            # ball_dist_rw = self.__ball_dist_rw() / self.ball_dist_scale
-            # self.reward_shaping_total['ball_dist'] += ball_dist_rw
+            # move_to_ball_rw = self.__move_to_ball_rw() / self.move_to_ball_scale
+            # self.reward_shaping_total['move_to_ball'] += move_to_ball_rw
+            move_to_ball_rw = 0.5 * self.__move_to_ball_rw()
+            self.reward_shaping_total['rw_move_to_ball'] += 0.2 * move_to_ball_rw
 
-            ball_grad_rw = self.__ball_grad_rw() / self.ball_grad_scale
+            ball_grad_rw = self.__ball_grad_rw()
             self.reward_shaping_total['rw_ball_grad'] += ball_grad_rw
 
-            toward_ball_rw = self.__towards_ball_rw()
-            self.reward_shaping_total['rw_towards_ball'] += toward_ball_rw
-
-            # dribble_shoot_rw = self.__dribble_shoot_rw()
-            # self.reward_shaping_total['rw_dribble'] += dribble_shoot_rw
+            toward_ball_rw = 0.2 * self.__towards_ball_rw()
+            self.reward_shaping_total['rw_towards_ball'] += 0.2 * toward_ball_rw
 
             energy_rw = -self.__energy_pen() / self.energy_scale
             self.reward_shaping_total['rw_energy'] += energy_rw
 
-            reward = ball_grad_rw + 0.5 * toward_ball_rw + energy_rw
+            reward = ball_grad_rw + move_to_ball_rw + toward_ball_rw + energy_rw
 
         done = done
         return reward, done
@@ -293,8 +291,6 @@ class SSLShootEnv(SSLBaseEnv):
 
         pos_frame: Frame = Frame()
 
-        pos_frame.robots_blue[0] = Robot(x=0., y=0., theta=0.)
-
         def in_gk_area(obj):
             return obj.x > half_len - pen_len and abs(obj.y) < half_pen_wid
 
@@ -304,13 +300,14 @@ class SSLShootEnv(SSLBaseEnv):
         places = KDTree()
         places.insert((pos_frame.ball.x, pos_frame.ball.y))
 
-        factor = (pos_frame.ball.y / abs(pos_frame.ball.y))
-        offset = 0.115 * factor
-        angle = random.uniform(0, 360)
+        r = 0.1
+        angle = theta()
+        robot_x = pos_frame.ball.x + r * math.cos(np.deg2rad(angle))
+        robot_y = pos_frame.ball.y + r * math.sin(np.deg2rad(angle))
         pos_frame.robots_blue[0] = Robot(
-            x=pos_frame.ball.x, y=pos_frame.ball.y + offset, theta=angle
+            x=robot_x, y=robot_y, theta=angle + 180
         )
-        places.insert((pos_frame.ball.x, pos_frame.ball.y + offset))
+        places.insert((pos_frame.ball.x, pos_frame.ball.y))
         min_dist = 0.2
         for i in range(self.n_robots_blue):
             if i == 0:
@@ -331,65 +328,6 @@ class SSLShootEnv(SSLBaseEnv):
             pos_frame.robots_yellow[i] = Robot(x=pos[0], y=pos[1], theta=theta())
 
         return pos_frame
-
-    def __ball_dist_rw(self):
-        assert (self.last_frame is not None)
-
-        # Calculate previous ball dist
-        last_ball = self.last_frame.ball
-        last_robot = self.last_frame.robots_blue[0]
-        last_ball_pos = np.array([last_ball.x, last_ball.y])
-        last_robot_pos = np.array([last_robot.x, last_robot.y])
-        last_ball_dist = np.linalg.norm(last_robot_pos - last_ball_pos)
-
-        # Calculate new ball dist
-        ball = self.frame.ball
-        robot = self.frame.robots_blue[0]
-        ball_pos = np.array([ball.x, ball.y])
-        robot_pos = np.array([robot.x, robot.y])
-        ball_dist = np.linalg.norm(robot_pos - ball_pos)
-
-        ball_dist_rw = last_ball_dist - ball_dist
-
-        if ball_dist_rw > 1:
-            print("ball_dist -> ", ball_dist_rw)
-            print(self.frame.ball)
-            print(self.frame.robots_blue)
-            print(self.frame.robots_yellow)
-            print("===============================")
-
-        return np.clip(ball_dist_rw, -1, 1)
-
-    def __ball_grad_rw(self):
-        '''Calculate ball potential gradient
-        Difference of potential of the ball in time_step seconds.
-        '''
-        # Calculate ball potential
-        length_cm = self.field.length * 100
-        half_lenght = (self.field.length / 2.0) \
-                      + self.field.goal_depth
-
-        # distance to defence
-        dx_d = (half_lenght + self.frame.ball.x) * 100
-        # distance to attack
-        dx_a = (half_lenght - self.frame.ball.x) * 100
-        dy = (self.frame.ball.y) * 100
-
-        dist_1 = -math.sqrt(dx_a ** 2 + 2 * dy ** 2)
-        dist_2 = math.sqrt(dx_d ** 2 + 2 * dy ** 2)
-        ball_potential = ((dist_1 + dist_2) / length_cm - 1) / 2
-
-        grad_ball_potential = 0
-        # Calculate ball potential gradient
-        # = actual_potential - previous_potential
-        if self.previous_ball_potential is not None:
-            diff = ball_potential - self.previous_ball_potential
-            grad_ball_potential = np.clip(diff * 3 / self.time_step,
-                                          -5.0, 5.0)
-
-        self.previous_ball_potential = ball_potential
-
-        return grad_ball_potential
 
     def __energy_pen(self):
         robot = self.frame.robots_blue[0]
@@ -461,3 +399,48 @@ class SSLShootEnv(SSLBaseEnv):
                 return 1
         else:
             return 0
+
+    def __move_to_ball_rw(self):
+        assert (self.last_frame is not None)
+
+        # Calculate previous ball dist
+        last_ball = self.last_frame.ball
+        last_robot = self.last_frame.robots_blue[0]
+        last_ball_pos = np.array([last_ball.x, last_ball.y])
+        last_robot_pos = np.array([last_robot.x, last_robot.y])
+        last_dist = np.linalg.norm(last_robot_pos - last_ball_pos)
+
+        # Calculate new ball dist
+        ball = self.frame.ball
+        robot = self.frame.robots_blue[0]
+        ball_pos = np.array([ball.x, ball.y])
+        robot_pos = np.array([robot.x, robot.y])
+        dist = np.linalg.norm(robot_pos - last_ball_pos)
+
+        move_to_ball_rw = last_dist - dist
+        move_to_ball_rw = move_to_ball_rw * (1/0.05)
+        return np.clip(move_to_ball_rw, -1, 1)
+
+    def __ball_grad_rw(self):
+        assert (self.last_frame is not None)
+
+        # Goal pos
+        up_goalpost = np.array([self.field.length / 2 , self.field.goal_width/2])
+        down_goalpost = np.array([self.field.length / 2 , -self.field.goal_width/2])
+        mid_goalpost = np.array([self.field.length / 2, 0.])
+
+        # Calculate previous ball dist
+        last_ball = self.last_frame.ball
+        ball = self.frame.ball
+
+        last_ball_pos = np.array([last_ball.x, last_ball.y])
+        last_ball_dist = min(np.linalg.norm(up_goalpost - last_ball_pos),np.linalg.norm(down_goalpost - last_ball_pos), np.linalg.norm(mid_goalpost - last_ball_pos))
+
+        # Calculate new ball dist
+        ball_pos = np.array([ball.x, ball.y])
+        ball_dist = min(np.linalg.norm(up_goalpost - ball_pos),np.linalg.norm(down_goalpost - ball_pos),np.linalg.norm(mid_goalpost - ball_pos))
+
+
+        ball_grad = last_ball_dist - ball_dist
+        ball_grad = ball_grad * (1/0.1)
+        return np.clip(ball_grad, -1, 1)

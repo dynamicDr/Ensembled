@@ -82,7 +82,7 @@ class Runner:
             self.episode += 1
             if args.write_rewards:
                 for r in reward_dict:
-                    self.writer.add_scalar(r, reward_dict[r], global_step=self.episode)
+                    self.writer.add_scalar(r, reward_dict[r]/ episode_step, global_step=self.episode)
 
             # Save model
             if self.episode % self.args.save_rate == 0 and not self.args.display:
@@ -99,6 +99,7 @@ class Runner:
                                                                                                 avg_train_reward,
                                                                                                 info["goal"],
                                                                                                 self.agent.epsilon))
+            print("last action: ",action)
             if not self.args.display:
                 self.writer.add_scalar('avg_episode_reward', avg_train_reward, global_step=self.episode)
                 self.writer.add_scalar('goal', info["goal"], global_step=self.episode)
@@ -109,36 +110,36 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser("Hyperparameters Setting for individual models.")
     parser.add_argument("--env_name", type=str, default="SSLShootEnv", help="Environemnt name.")
     parser.add_argument("--max_episode", type=int, default=int(200000), help=" Maximum number of training steps")
-    parser.add_argument("--episode_limit", type=int, default=500, help="Maximum number of steps per episode")
+    parser.add_argument("--episode_limit", type=int, default=200, help="Maximum number of steps per episode")
     parser.add_argument("--max_action", type=float, default=1.0, help="Max action")
-    parser.add_argument("--buffer_size", type=int, default=int(1e6), help="The capacity of the replay buffer")
+    parser.add_argument("--buffer_size", type=int, default=int(1e7), help="The capacity of the replay buffer")
     parser.add_argument("--batch_size", type=int, default=1024, help="Batch size")
-    parser.add_argument("--hidden_dim_1", type=int, default=32,
+    parser.add_argument("--hidden_dim_1", type=int, default=64,
                         help="The number of neurons in 1st hidden layers of the neural network")
-    parser.add_argument("--hidden_dim_2", type=int, default=16,
+    parser.add_argument("--hidden_dim_2", type=int, default=64,
                         help="The number of neurons in 2rd hidden layers of the neural network")
     parser.add_argument("--epsilon_init", type=float, default=1, help="The std of Gaussian noise for exploration")
-    parser.add_argument("--epsilon_min", type=float, default=0.01, help="The std of Gaussian noise for exploration")
-    parser.add_argument("--epsilon_decay_steps", type=float, default=5e5,
+    parser.add_argument("--epsilon_min", type=float, default=0.02, help="The std of Gaussian noise for exploration")
+    parser.add_argument("--epsilon_decay_steps", type=float, default=1e6,
                         help="How many steps before the noise_std decays to the minimum")
     parser.add_argument("--write_rewards", type=bool, default=True, help="Whether to write reward")
     parser.add_argument("--lr_a", type=float, default=1e-4, help="Learning rate of actor")
     parser.add_argument("--lr_c", type=float, default=1e-4, help="Learning rate of critic")
-    parser.add_argument("--gamma", type=float, default=0.95, help="Discount factor")
+    parser.add_argument("--gamma", type=float, default=0.98, help="Discount factor")
     parser.add_argument("--tau", type=float, default=0.01, help="Softly update the target network")
     parser.add_argument('--ou_theta', default=0.15, type=float, help='noise theta')
-    parser.add_argument('--ou_sigma', default=0.2, type=float, help='noise sigma')
+    parser.add_argument('--ou_sigma', default=0.6, type=float, help='noise sigma')
     parser.add_argument('--ou_mu', default=0.0, type=float, help='noise mu')
     # parser.add_argument("--use_orthogonal_init", type=bool, default=True, help="Orthogonal initialization")
     parser.add_argument("--use_grad_clip", type=bool, default=True, help="Gradient clip")
-    parser.add_argument("--save_rate", type=int, default=1000,
+    parser.add_argument("--save_rate", type=int, default=2000,
                         help="Model save per n episode")
     parser.add_argument("--policy_update_freq", type=int, default=1, help="The frequency of policy updates")
     parser.add_argument("--display", type=bool, default=False, help="Display mode")
     args = parser.parse_args()
     args.epsilon_decay = (args.epsilon_init - args.epsilon_min) / args.epsilon_decay_steps
 
-    number = 5
+    number = 21
     runner = Runner(args, number=number)
 
     # Save args

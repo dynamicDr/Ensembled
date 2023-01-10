@@ -14,6 +14,13 @@ def fanin_init(size, fanin=None):
     v = 1. / np.sqrt(fanin)
     return torch.Tensor(size).uniform_(-v, v)
 
+def orthogonal_init(layer, gain=1.0):
+    for name, param in layer.named_parameters():
+        if 'bias' in name:
+            nn.init.constant_(param, 0)
+        elif 'weight' in name:
+            nn.init.orthogonal_(param, gain=gain)
+
 
 class Actor(nn.Module):
     def __init__(self, nb_states, nb_actions, hidden1=400, hidden2=300, init_w=3e-3):
@@ -23,7 +30,9 @@ class Actor(nn.Module):
         self.fc3 = nn.Linear(hidden2, nb_actions)
         self.relu = nn.ReLU()
         self.tanh = nn.Tanh()
-        self.init_weights(init_w)
+        orthogonal_init(self.fc1)
+        orthogonal_init(self.fc2)
+        orthogonal_init(self.fc3)
 
     def init_weights(self, init_w):
         self.fc1.weight.data = fanin_init(self.fc1.weight.data.size())
@@ -47,7 +56,9 @@ class Critic(nn.Module):
         self.fc2 = nn.Linear(hidden1 + nb_actions, hidden2)
         self.fc3 = nn.Linear(hidden2, 1)
         self.relu = nn.ReLU()
-        self.init_weights(init_w)
+        orthogonal_init(self.fc1)
+        orthogonal_init(self.fc2)
+        orthogonal_init(self.fc3)
 
     def init_weights(self, init_w):
         self.fc1.weight.data = fanin_init(self.fc1.weight.data.size())
@@ -67,7 +78,7 @@ class Critic(nn.Module):
 
 class DDPG(object):
     def __init__(self, args):
-
+        self.evaluation = False
         self.obs_dim = args.obs_dim
         self.action_dim = args.action_dim
 
@@ -152,6 +163,7 @@ class DDPG(object):
         soft_update(self.critic_target, self.critic, self.tau)
 
     def eval(self):
+        self.evaluation = True
         self.actor.eval()
         self.actor_target.eval()
         self.critic.eval()
@@ -172,13 +184,12 @@ class DDPG(object):
         action = to_numpy(
             self.actor(to_tensor(np.array([s_t])))
         ).squeeze(0)
-        if numpy.random.rand() < self.epsilon:
-            action += self.random_process.sample()
-        else:
-            action = np.clip(action, -self.max_action, self.max_action)
+        if numpy.random.rand() < self.epsilon and self.evaluation is False:
+            action = self.random_process.sample()
+        action = np.clip(action, -self.max_action, self.max_action)
 
         # Decay noise_std
-        if decay_epsilon:
+        if decay_epsilon and self.evaluation is False:
             self.epsilon = max(self.epsilon-self.epsilon_decay, self.epsilon_min)
 
         self.a_t = action

@@ -17,7 +17,7 @@
     说明：控球情况下，使用dribbler+kicker将球传给最近队友。根据规则，带球时间/距离存在上限。
     输入：42维obs
     reward：球距离队友位置的距离，球滚动方向，能量惩罚
-    起始状态：6个机器人随机分布
+    起始状态：6个机器人随机分布，active player控球，其余5个做随机运动
     终止条件：犯规，球到达目标位置，对方获得控球权，时间到达上限
 任务2：SSLCatchEnv
     说明：非控球情况下，接近一个自由的球并进入控球状态。
@@ -33,7 +33,11 @@ ssh访问远程tensorboard
 ssh -L 16006:127.0.0.1:6006 zzydty@172.29.244.218 -N -v -v
 
 远端运行：
-tensorboard --logdir=./ --port=6006
+tensorboard --logdir=./ --port=6006 --samples_per_plugin scalars=999999999
+
 
 本地浏览器访问：
 http://localhost:16006
+
+如果要重新运行，可以用以下指令杀死6006端口上的进程：
+fuser -k 6006/tcp

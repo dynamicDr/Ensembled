@@ -5,24 +5,22 @@ import numpy as np
 from rsoccer_gym.ssl import *
 
 env = gym.make('SSLShootEnv-v0')
-env.reset()
 
-for i in range(1):
+
+for i in range(10):
+    env.reset()
     done = False
     frame = 0
-
+    env.render()
     while not done:
         # print("Frame",frame)
         frame+=1
-        if frame >= 100:
+        if frame >= 50:
             break
         # action = env.action_space.sample()
-        if frame<50:
-            action= np.array([0,0,-0.5,0])
-        else:
-            action = np.array([0, 0,-0.5,1])
+        action = np.array([1,1,1,0])
         next_state, reward, done, info = env.step(action)
         env.render()
-        print(reward)
+        # print("ball_grad",info["rw_ball_grad"])
+        # print("ball_dist",info["rw_ball_dist"])
         # print("frame",frame,"reward",reward)
-    print(info)

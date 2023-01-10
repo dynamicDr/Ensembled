@@ -8,8 +8,8 @@ import torch
 from ddpg import DDPG
 from rsoccer_gym.ssl import *
 
-number = 5
-step_k = 2227
+number = 20
+step_k = 1801
 max_episode = 10
 display = True
 
@@ -27,12 +27,13 @@ for episode in range(max_episode):
     done = False
     episode_step = 0
     episode_reward = 0
-
     while not (done or terminate):
+
         # For each step...
         action = agent.select_action(obs)
         obs_next, reward, done, info = env.step(copy.deepcopy(action))
         print(action)
+        print(reward)
         if display:
             env.render()
         obs = obs_next
