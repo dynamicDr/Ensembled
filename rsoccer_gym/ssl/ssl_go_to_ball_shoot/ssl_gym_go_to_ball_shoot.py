@@ -143,8 +143,8 @@ class SSLGoToBallShootEnv(SSLBaseEnv):
                 'done_ball_out': 0,
                 'done_ball_out_right': 0,
                 'done_rbt_out': 0,
-                'ball_dist': 0,
-                'ball_grad': 0,
+                'rw_ball_dist': 0,
+                'rw_ball_grad': 0,
                 'energy': 0
             }
         reward = 0
@@ -185,10 +185,10 @@ class SSLGoToBallShootEnv(SSLBaseEnv):
                 self.reward_shaping_total['done_ball_out_right'] += 1
         elif self.last_frame is not None:
             ball_dist_rw = self.__ball_dist_rw() / self.ball_dist_scale
-            self.reward_shaping_total['ball_dist'] += ball_dist_rw
+            self.reward_shaping_total['rw_ball_dist'] += ball_dist_rw
             
             ball_grad_rw = self.__ball_grad_rw() / self.ball_grad_scale
-            self.reward_shaping_total['ball_grad'] += ball_grad_rw
+            self.reward_shaping_total['rw_ball_grad'] += ball_grad_rw
             
             energy_rw = -self.__energy_pen() / self.energy_scale
             self.reward_shaping_total['energy'] += energy_rw

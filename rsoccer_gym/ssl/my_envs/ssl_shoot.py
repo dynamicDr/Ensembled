@@ -122,26 +122,26 @@ class SSLShootEnv(SSLBaseEnv):
         nearest_yellow_robot, nearest_yellow_robot_dist = self.get_nearest_robot_idx(
             [self.frame.ball.x, self.frame.ball.y], "yellow")
 
-        # threshold = 0.15
-        # self.last_possession = self.possession_robot_idx
-        #
-        # self.active_robot_idx = nearest_blue_robot
-        # self.possession_robot_idx = -1
-        # if self.commands is not None:
-        #     if nearest_blue_robot_dist <= nearest_yellow_robot_dist:
-        #         if nearest_blue_robot_dist <= threshold and self.commands[
-        #             nearest_blue_robot].dribbler and self.__is_toward_ball("blue", nearest_blue_robot):
-        #             self.possession_robot_idx = nearest_blue_robot
-        #     else:
-        #         if nearest_yellow_robot_dist <= threshold and self.commands[
-        #             self.n_robots_blue + nearest_yellow_robot].dribbler and self.__is_toward_ball("yellow",
-        #                                                                                           nearest_blue_robot):
-        #             self.possession_robot_idx = 3 + nearest_yellow_robot
-        #
-        #     if self.possession_robot_idx == self.last_possession and self.possession_robot_idx == self.active_robot_idx:
-        #         self.dribbler_time += 1
-        #     else:
-        #         self.dribbler_time = 0
+        threshold = 0.15
+        self.last_possession = self.possession_robot_idx
+
+        self.active_robot_idx = nearest_blue_robot
+        self.possession_robot_idx = -1
+        if self.commands is not None:
+            if nearest_blue_robot_dist <= nearest_yellow_robot_dist:
+                if nearest_blue_robot_dist <= threshold and self.commands[
+                    nearest_blue_robot].dribbler and self.__is_toward_ball("blue", nearest_blue_robot):
+                    self.possession_robot_idx = nearest_blue_robot
+            else:
+                if nearest_yellow_robot_dist <= threshold and self.commands[
+                    self.n_robots_blue + nearest_yellow_robot].dribbler and self.__is_toward_ball("yellow",
+                                                                                                  nearest_blue_robot):
+                    self.possession_robot_idx = 3 + nearest_yellow_robot
+
+            # if self.possession_robot_idx == self.last_possession and self.possession_robot_idx == self.active_robot_idx:
+            #     self.dribbler_time += 1
+            # else:
+            #     self.dribbler_time = 0
         #
         # observation.append(self.possession_robot_idx)
         # observation.append(self.active_robot_idx)
@@ -208,8 +208,10 @@ class SSLShootEnv(SSLBaseEnv):
                 'done_robot_out': 0,
                 'done_long_dribbler': 0,
                 'rw_ball_grad': 0,
-                'rw_move_to_ball': 0,
-                'rw_towards_ball': 0,
+                'rw_robot_grad': 0,
+                'rw_robot_orientation': 0,
+                # 'rw_move_to_ball': 0,
+                # 'rw_towards_ball': 0,
                 'rw_energy': 0
             }
         reward = 0
@@ -225,50 +227,58 @@ class SSLShootEnv(SSLBaseEnv):
         ball = self.frame.ball
         robot = self.frame.robots_blue[0]
 
-        if self.dribbler_time > self.max_dribbler_time:
-            done = True
-            self.reward_shaping_total['done_long_dribbler'] += 1
-            reward = -5
-        elif abs(robot.y) > half_wid or abs(robot.x) > half_len:
+        # if self.dribbler_time > self.max_dribbler_time:
+        #     done = True
+        #     self.reward_shaping_total['done_long_dribbler'] += 1
+        #     reward = -5
+        if abs(robot.y) > half_wid or abs(robot.x) > half_len:
             done = True
             self.reward_shaping_total['done_robot_out'] += 1
-            reward = -5
+            reward = -1
         elif abs(ball.y) > half_wid:
             done = True
             self.reward_shaping_total['done_ball_out'] += 1
-            reward = -5
+            reward = -1
         elif ball.x < -half_len or abs(ball.y) > half_wid:
             done = True
             if abs(ball.y) < half_goal_wid:
-                reward = -10
+                reward = -20
                 self.reward_shaping_total['goal'] -= 1
             else:
                 self.reward_shaping_total['done_ball_out'] += 1
-                reward = -5
+                reward = -1
         elif ball.x > half_len:
             done = True
             if abs(ball.y) < half_goal_wid:
-                reward = 10
+                reward = 20
                 self.reward_shaping_total['goal'] += 1
             else:
-                reward = -5
+                reward = -1
                 self.reward_shaping_total['done_ball_out'] += 1
         elif self.last_frame is not None:
             # move_to_ball_rw = self.__move_to_ball_rw() / self.move_to_ball_scale
             # self.reward_shaping_total['move_to_ball'] += move_to_ball_rw
-            move_to_ball_rw = 0.5 * self.__move_to_ball_rw()
-            self.reward_shaping_total['rw_move_to_ball'] += 0.2 * move_to_ball_rw
+            # move_to_ball_rw = 0.2 * self.__move_to_ball_rw()
+            # self.reward_shaping_total['rw_move_to_ball'] += 0.2 * move_to_ball_rw
 
             ball_grad_rw = self.__ball_grad_rw()
             self.reward_shaping_total['rw_ball_grad'] += ball_grad_rw
 
-            toward_ball_rw = 0.2 * self.__towards_ball_rw()
-            self.reward_shaping_total['rw_towards_ball'] += 0.2 * toward_ball_rw
+            robot_grad_rw = 0.5 * self.__robot_grad_rw()
+            self.reward_shaping_total['rw_robot_grad'] += robot_grad_rw
+
+            # toward_ball_rw = 0 * self.__towards_ball_rw()
+            # self.reward_shaping_total['rw_towards_ball'] += 0 * toward_ball_rw
+
+            robot_orientation_rw = 0
+            if self.possession_robot_idx == self.active_robot_idx:
+                robot_orientation_rw = 0.2 * self.__robot_orientation_rw()
+                self.reward_shaping_total['rw_robot_orientation'] += robot_orientation_rw
 
             energy_rw = -self.__energy_pen() / self.energy_scale
             self.reward_shaping_total['rw_energy'] += energy_rw
 
-            reward = ball_grad_rw + move_to_ball_rw + toward_ball_rw + energy_rw
+            reward = ball_grad_rw + robot_grad_rw +  robot_orientation_rw + energy_rw
 
         done = done
         return reward, done
@@ -300,7 +310,7 @@ class SSLShootEnv(SSLBaseEnv):
         places = KDTree()
         places.insert((pos_frame.ball.x, pos_frame.ball.y))
 
-        r = 0.1
+        r = 0.09
         angle = theta()
         robot_x = pos_frame.ball.x + r * math.cos(np.deg2rad(angle))
         robot_y = pos_frame.ball.y + r * math.sin(np.deg2rad(angle))
@@ -444,3 +454,52 @@ class SSLShootEnv(SSLBaseEnv):
         ball_grad = last_ball_dist - ball_dist
         ball_grad = ball_grad * (1/0.1)
         return np.clip(ball_grad, -1, 1)
+
+    def __robot_grad_rw(self):
+        assert (self.last_frame is not None)
+
+        # Goal pos
+        up_goalpost = np.array([self.field.length / 2 , self.field.goal_width/2])
+        down_goalpost = np.array([self.field.length / 2 , -self.field.goal_width/2])
+        mid_goalpost = np.array([self.field.length / 2, 0.])
+
+        # Calculate previous ball dist
+        last_robot = self.last_frame.robots_blue[self.active_robot_idx]
+        robot = self.frame.robots_blue[self.active_robot_idx]
+
+        last_robot_pos = np.array([last_robot.x, last_robot.y])
+        last_robot_dist = min(np.linalg.norm(up_goalpost - last_robot_pos),np.linalg.norm(down_goalpost - last_robot_pos), np.linalg.norm(mid_goalpost - last_robot_pos))
+
+        # Calculate new ball dist
+        robot_pos = np.array([robot.x, robot.y])
+        robot_dist = min(np.linalg.norm(up_goalpost - robot_pos),np.linalg.norm(down_goalpost - robot_pos),np.linalg.norm(mid_goalpost - robot_pos))
+
+
+        ball_grad = last_robot_dist - robot_dist
+        ball_grad = ball_grad * (1/0.1)
+        return np.clip(ball_grad, -1, 1)
+
+    def __robot_orientation_rw(self):
+        # 机器人坐标、朝向
+        theta = math.radians(self.frame.robots_blue[0].theta)
+        Xr, Yr, theta= self.frame.robots_blue[0].x, self.frame.robots_blue[
+            0].y, theta
+
+        # 球门坐标
+        Xg, Yg = self.field.length / 2, 0
+
+        # 计算机器人-球门连线方向的角度
+        line_angle = math.atan2(Yg - Yr, Xg - Xr)
+
+        # 计算摄像头方向和机器人-球门连线方向之间的夹角
+        angle = line_angle - theta
+
+        # 将夹角转换为[-π,π]区间内的值
+        while angle < -math.pi:
+            angle += 2 * math.pi
+        while angle > math.pi:
+            angle -= 2 * math.pi
+
+        value = math.pi - abs(angle)
+        normalized_value = (value - 0) / (math.pi - 0) - 0.5
+        return normalized_value

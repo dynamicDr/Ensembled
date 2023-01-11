@@ -3,16 +3,10 @@ import numpy.random
 import torch
 import torch.nn as nn
 from torch.optim import Adam
-
+import torch.nn.functional as F
 from utils import *
 
 criterion = nn.MSELoss()
-
-
-def fanin_init(size, fanin=None):
-    fanin = fanin or size[0]
-    v = 1. / np.sqrt(fanin)
-    return torch.Tensor(size).uniform_(-v, v)
 
 def orthogonal_init(layer, gain=1.0):
     for name, param in layer.named_parameters():
@@ -23,34 +17,24 @@ def orthogonal_init(layer, gain=1.0):
 
 
 class Actor(nn.Module):
-    def __init__(self, nb_states, nb_actions, hidden1=400, hidden2=300, init_w=3e-3):
+    def __init__(self, nb_states, nb_actions, hidden1, hidden2):
         super(Actor, self).__init__()
         self.fc1 = nn.Linear(nb_states, hidden1)
         self.fc2 = nn.Linear(hidden1, hidden2)
         self.fc3 = nn.Linear(hidden2, nb_actions)
-        self.relu = nn.ReLU()
-        self.tanh = nn.Tanh()
         orthogonal_init(self.fc1)
         orthogonal_init(self.fc2)
         orthogonal_init(self.fc3)
 
-    def init_weights(self, init_w):
-        self.fc1.weight.data = fanin_init(self.fc1.weight.data.size())
-        self.fc2.weight.data = fanin_init(self.fc2.weight.data.size())
-        self.fc3.weight.data.uniform_(-init_w, init_w)
-
     def forward(self, x):
-        out = self.fc1(x)
-        out = self.relu(out)
-        out = self.fc2(out)
-        out = self.relu(out)
-        out = self.fc3(out)
-        out = self.tanh(out)
-        return out
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        a = torch.tanh(self.fc3(x))
 
+        return a
 
 class Critic(nn.Module):
-    def __init__(self, nb_states, nb_actions, hidden1=400, hidden2=300, init_w=3e-3):
+    def __init__(self, nb_states, nb_actions, hidden1, hidden2):
         super(Critic, self).__init__()
         self.fc1 = nn.Linear(nb_states, hidden1)
         self.fc2 = nn.Linear(hidden1 + nb_actions, hidden2)
@@ -60,10 +44,6 @@ class Critic(nn.Module):
         orthogonal_init(self.fc2)
         orthogonal_init(self.fc3)
 
-    def init_weights(self, init_w):
-        self.fc1.weight.data = fanin_init(self.fc1.weight.data.size())
-        self.fc2.weight.data = fanin_init(self.fc2.weight.data.size())
-        self.fc3.weight.data.uniform_(-init_w, init_w)
 
     def forward(self, xs):
         x, a = xs
@@ -100,8 +80,6 @@ class DDPG(object):
         hard_update(self.actor_target, self.actor)  # Make sure target is with the same weight
         hard_update(self.critic_target, self.critic)
 
-        self.random_process = OrnsteinUhlenbeckProcess(size=self.action_dim, theta=args.ou_theta, mu=args.ou_mu,
-                                                       sigma=args.ou_sigma)
         # Hyper-parameters
         self.batch_size = args.batch_size
         self.tau = args.tau
@@ -113,10 +91,6 @@ class DDPG(object):
         self.is_training = True
         self.max_action = args.max_action
 
-        # Noise
-        self.epsilon = args.epsilon_init
-        self.epsilon_min = args.epsilon_min
-        self.epsilon_decay = args.epsilon_decay
         if USE_CUDA: self.cuda()
 
     def update_policy(self, replay_buffer):
@@ -177,27 +151,14 @@ class DDPG(object):
 
     def random_action(self):
         action = np.random.uniform(-self.max_action, self.max_action, self.action_dim)
-        self.a_t = action
         return action
 
-    def select_action(self, s_t, decay_epsilon=True):
+    def select_action(self, obs, noise_std):
         action = to_numpy(
-            self.actor(to_tensor(np.array([s_t])))
+            self.actor(to_tensor(np.array([obs])))
         ).squeeze(0)
-        if numpy.random.rand() < self.epsilon and self.evaluation is False:
-            action = self.random_process.sample()
-        action = np.clip(action, -self.max_action, self.max_action)
-
-        # Decay noise_std
-        if decay_epsilon and self.evaluation is False:
-            self.epsilon = max(self.epsilon-self.epsilon_decay, self.epsilon_min)
-
-        self.a_t = action
+        action = (action + np.random.normal(0, noise_std, size=self.action_dim)).clip(-self.max_action, self.max_action)
         return action
-
-    def reset(self, obs):
-        self.s_t = obs
-        self.random_process.reset_states()
 
     def seed(self, s):
         torch.manual_seed(s)

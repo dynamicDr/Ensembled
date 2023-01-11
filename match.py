@@ -8,8 +8,8 @@ import torch
 from ddpg import DDPG
 from rsoccer_gym.ssl import *
 
-number = 20
-step_k = 1801
+number = 23
+step_k = 499
 max_episode = 10
 display = True
 
