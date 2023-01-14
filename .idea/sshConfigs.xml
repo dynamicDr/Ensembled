@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="SshConfigs">
+    <configs>
+      <sshConfig authType="PASSWORD" host="10.147.17.144" id="95c41145-d592-4f8d-aee0-8db997f43936" port="22" customName="HKU Server: zzydty@10.147.17.144" nameFormat="CUSTOM" username="zzydty">
+        <option name="customName" value="HKU Server: zzydty@10.147.17.144" />
+      </sshConfig>
+    </configs>
+  </component>
+</project>

@@ -15,8 +15,8 @@ class SSLShootEnv(SSLBaseEnv):
         Description:
 
         Observation:
-            Type: Box(4 + 8*n_robots_blue + 2*n_robots_yellow)
-            Normalized Bounds to [-1.2, 1.2]
+            Type: Box(4 + 7*n_robots_blue + 5*n_robots_yellow)
+            Normalized Bounds to [-1, 1]
             Num      Observation normalized
             0->3     Ball [X, Y, V_x, V_y]
             4+i*7->10+i*7    id i(0-2) Blue [X, Y, sin(theta), cos(theta), v_x, v_y, v_theta]
@@ -35,7 +35,7 @@ class SSLShootEnv(SSLBaseEnv):
             Robot on field center, ball and defenders randomly positioned on
             positive field side
         Episode Termination:
-            Goal, 25 seconds (1000 steps), or rule infraction
+            Goal, 5 seconds (200 steps), or rule infraction
     """
 
     def __init__(self, field_type=2):
@@ -74,6 +74,7 @@ class SSLShootEnv(SSLBaseEnv):
 
         self.dribbler_time = 0
         self.commands = None
+        self.last_ori_value= 0
         print('Environment initialized', "Obs:", n_obs)
 
     def reset(self):
@@ -234,26 +235,26 @@ class SSLShootEnv(SSLBaseEnv):
         if abs(robot.y) > half_wid or abs(robot.x) > half_len:
             done = True
             self.reward_shaping_total['done_robot_out'] += 1
-            reward = -1
+            reward = -10
         elif abs(ball.y) > half_wid:
             done = True
             self.reward_shaping_total['done_ball_out'] += 1
-            reward = -1
+            reward = -10
         elif ball.x < -half_len or abs(ball.y) > half_wid:
             done = True
             if abs(ball.y) < half_goal_wid:
-                reward = -20
+                reward = -30
                 self.reward_shaping_total['goal'] -= 1
             else:
                 self.reward_shaping_total['done_ball_out'] += 1
-                reward = -1
+                reward = -10
         elif ball.x > half_len:
             done = True
             if abs(ball.y) < half_goal_wid:
-                reward = 20
+                reward = 30
                 self.reward_shaping_total['goal'] += 1
             else:
-                reward = -1
+                reward = -10
                 self.reward_shaping_total['done_ball_out'] += 1
         elif self.last_frame is not None:
             # move_to_ball_rw = self.__move_to_ball_rw() / self.move_to_ball_scale
@@ -272,14 +273,12 @@ class SSLShootEnv(SSLBaseEnv):
 
             robot_orientation_rw = 0
             if self.possession_robot_idx == self.active_robot_idx:
-                robot_orientation_rw = 0.2 * self.__robot_orientation_rw()
+                robot_orientation_rw = 0.5 * self.__robot_orientation_rw()
                 self.reward_shaping_total['rw_robot_orientation'] += robot_orientation_rw
 
             energy_rw = -self.__energy_pen() / self.energy_scale
             self.reward_shaping_total['rw_energy'] += energy_rw
-
-            reward = ball_grad_rw + robot_grad_rw +  robot_orientation_rw + energy_rw
-
+            reward = ball_grad_rw + robot_grad_rw + robot_orientation_rw + energy_rw
         done = done
         return reward, done
 
@@ -435,21 +434,19 @@ class SSLShootEnv(SSLBaseEnv):
         assert (self.last_frame is not None)
 
         # Goal pos
-        up_goalpost = np.array([self.field.length / 2 , self.field.goal_width/2])
-        down_goalpost = np.array([self.field.length / 2 , -self.field.goal_width/2])
         mid_goalpost = np.array([self.field.length / 2, 0.])
+
 
         # Calculate previous ball dist
         last_ball = self.last_frame.ball
         ball = self.frame.ball
 
         last_ball_pos = np.array([last_ball.x, last_ball.y])
-        last_ball_dist = min(np.linalg.norm(up_goalpost - last_ball_pos),np.linalg.norm(down_goalpost - last_ball_pos), np.linalg.norm(mid_goalpost - last_ball_pos))
+        last_ball_dist = np.linalg.norm(mid_goalpost - last_ball_pos)
 
         # Calculate new ball dist
         ball_pos = np.array([ball.x, ball.y])
-        ball_dist = min(np.linalg.norm(up_goalpost - ball_pos),np.linalg.norm(down_goalpost - ball_pos),np.linalg.norm(mid_goalpost - ball_pos))
-
+        ball_dist = np.linalg.norm(mid_goalpost - ball_pos)
 
         ball_grad = last_ball_dist - ball_dist
         ball_grad = ball_grad * (1/0.1)
@@ -459,8 +456,6 @@ class SSLShootEnv(SSLBaseEnv):
         assert (self.last_frame is not None)
 
         # Goal pos
-        up_goalpost = np.array([self.field.length / 2 , self.field.goal_width/2])
-        down_goalpost = np.array([self.field.length / 2 , -self.field.goal_width/2])
         mid_goalpost = np.array([self.field.length / 2, 0.])
 
         # Calculate previous ball dist
@@ -468,11 +463,11 @@ class SSLShootEnv(SSLBaseEnv):
         robot = self.frame.robots_blue[self.active_robot_idx]
 
         last_robot_pos = np.array([last_robot.x, last_robot.y])
-        last_robot_dist = min(np.linalg.norm(up_goalpost - last_robot_pos),np.linalg.norm(down_goalpost - last_robot_pos), np.linalg.norm(mid_goalpost - last_robot_pos))
+        last_robot_dist = np.linalg.norm(mid_goalpost - last_robot_pos)
 
         # Calculate new ball dist
         robot_pos = np.array([robot.x, robot.y])
-        robot_dist = min(np.linalg.norm(up_goalpost - robot_pos),np.linalg.norm(down_goalpost - robot_pos),np.linalg.norm(mid_goalpost - robot_pos))
+        robot_dist = np.linalg.norm(mid_goalpost - robot_pos)
 
 
         ball_grad = last_robot_dist - robot_dist
@@ -480,6 +475,7 @@ class SSLShootEnv(SSLBaseEnv):
         return np.clip(ball_grad, -1, 1)
 
     def __robot_orientation_rw(self):
+        last_ori_value = self.last_ori_value
         # 机器人坐标、朝向
         theta = math.radians(self.frame.robots_blue[0].theta)
         Xr, Yr, theta= self.frame.robots_blue[0].x, self.frame.robots_blue[
@@ -501,5 +497,6 @@ class SSLShootEnv(SSLBaseEnv):
             angle -= 2 * math.pi
 
         value = math.pi - abs(angle)
-        normalized_value = (value - 0) / (math.pi - 0) - 0.5
-        return normalized_value
+        normalized_value = (value - 0) / (math.pi - 0)
+        self.last_ori_value = normalized_value
+        return normalized_value - last_ori_value

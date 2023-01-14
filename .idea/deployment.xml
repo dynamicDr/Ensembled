@@ -1,39 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="Always" serverName="zzydty@172.29.244.218:22" remoteFilesAllowedToDisappearOnAutoupload="false">
+  <component name="PublishConfigData" autoUpload="Always" serverName="MB110" remoteFilesAllowedToDisappearOnAutoupload="false">
     <serverData>
-      <paths name="MB110">
+      <paths name="HKU Server">
         <serverdata>
           <mappings>
             <mapping deploy="/home/zzydty/Ensembled" local="$PROJECT_DIR$" web="/" />
           </mappings>
         </serverdata>
       </paths>
-      <paths name="user@172.29.123.252:22">
+      <paths name="MB110">
         <serverdata>
           <mappings>
-            <mapping local="$PROJECT_DIR$" web="/" />
-          </mappings>
-        </serverdata>
-      </paths>
-      <paths name="user@172.29.123.252:22 (1)">
-        <serverdata>
-          <mappings>
-            <mapping local="$PROJECT_DIR$" web="/" />
-          </mappings>
-        </serverdata>
-      </paths>
-      <paths name="user@172.29.123.252:22 password">
-        <serverdata>
-          <mappings>
-            <mapping local="$PROJECT_DIR$" web="/" />
-          </mappings>
-        </serverdata>
-      </paths>
-      <paths name="zzydty@172.29.244.218:22">
-        <serverdata>
-          <mappings>
-            <mapping deploy="/home/zzydty/Ensembled" local="$PROJECT_DIR$" />
+            <mapping deploy="/home/zzydty/Ensembled" local="$PROJECT_DIR$" web="/" />
           </mappings>
         </serverdata>
       </paths>

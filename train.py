@@ -39,6 +39,10 @@ class Runner:
 
         # Create agent and buffer
         self.agent = DDPG(args)
+        if args.restore:
+            self.agent.actor.load_state_dict(torch.load(args.restore_ckp_actor))
+            self.agent.critic.load_state_dict(torch.load(args.restore_ckp_critic))
+            print("Successfully load ckp from: ",args.restore_ckp_actor)
         self.replay_buffer = ReplayBuffer(self.args)
 
     def run(self):
@@ -117,17 +121,17 @@ if __name__ == '__main__':
     parser.add_argument("--max_action", type=float, default=1.0, help="Max action")
     parser.add_argument("--buffer_size", type=int, default=int(1e7), help="The capacity of the replay buffer")
     parser.add_argument("--batch_size", type=int, default=1024, help="Batch size")
-    parser.add_argument("--hidden_dim_1", type=int, default=64,
+    parser.add_argument("--hidden_dim_1", type=int, default=256,
                         help="The number of neurons in 1st hidden layers of the neural network")
-    parser.add_argument("--hidden_dim_2", type=int, default=32,
+    parser.add_argument("--hidden_dim_2", type=int, default=256,
                         help="The number of neurons in 2rd hidden layers of the neural network")
     parser.add_argument("--noise_std_init", type=float, default=0.2, help="The std of Gaussian noise for exploration")
     parser.add_argument("--noise_std_min", type=float, default=0.05, help="The std of Gaussian noise for exploration")
-    parser.add_argument("--noise_decay_steps", type=float, default=3e5,
+    parser.add_argument("--noise_decay_steps", type=float, default=1e6,
                         help="How many steps before the noise_std decays to the minimum")
     parser.add_argument("--write_rewards", type=bool, default=True, help="Whether to write reward")
-    parser.add_argument("--lr_a", type=float, default=1e-4, help="Learning rate of actor")
-    parser.add_argument("--lr_c", type=float, default=1e-4, help="Learning rate of critic")
+    parser.add_argument("--lr_a", type=float, default=1e-5, help="Learning rate of actor")
+    parser.add_argument("--lr_c", type=float, default=1e-5, help="Learning rate of critic")
     parser.add_argument("--gamma", type=float, default=0.98, help="Discount factor")
     parser.add_argument("--tau", type=float, default=0.01, help="Softly update the target network")
     # parser.add_argument("--use_orthogonal_init", type=bool, default=True, help="Orthogonal initialization")
@@ -136,10 +140,13 @@ if __name__ == '__main__':
                         help="Model save per n episode")
     parser.add_argument("--policy_update_freq", type=int, default=1, help="The frequency of policy updates")
     parser.add_argument("--display", type=bool, default=False, help="Display mode")
+    parser.add_argument("--restore", type=bool, default=False, help="")
+    parser.add_argument("--restore_ckp_actor", type=str, default="models/SSLShootEnv/38/SSLShootEnv_38_2016k_actor.npy", help="")
+    parser.add_argument("--restore_ckp_critic", type=str, default="models/SSLShootEnv/38/SSLShootEnv_38_2016k_critic.npy", help="")
     args = parser.parse_args()
     args.noise_std_decay = (args.noise_std_init - args.noise_std_min) / args.noise_decay_steps
 
-    number = 29
+    number = 40
     runner = Runner(args, number=number)
 
     # Save args

@@ -18,7 +18,7 @@ class SSLBaseEnv(gym.Env):
     metadata = {
         'render.modes': ['human', 'rgb_array'],
     }
-    NORM_BOUNDS = 1.2
+    NORM_BOUNDS = 1
 
     def __init__(self, field_type: int,
                  n_robots_blue: int, n_robots_yellow: int, time_step: float):
