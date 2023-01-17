@@ -20,9 +20,12 @@ for i in range(1):
         if frame >= 1000:
             break
         # action = env.action_space.sample()
-        action = np.array([0,0,1,0])
+        if frame<10:
+            action = np.array([0,0,1,0])
+        else:
+            action = np.array([0,0,1,1])
         next_state, reward, done, info = env.step(action)
-        # env.render()
+        env.render()
         # ball_grad_sum +=info["rw_robot_grad"]
         # ball_grad_sum += info["rw_energy"]
         print(reward)

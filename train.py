@@ -9,6 +9,7 @@ import os
 import torch
 from torch.utils.tensorboard import SummaryWriter
 
+import match
 from ddpg import DDPG
 from replay_buffer import ReplayBuffer
 from rsoccer_gym.vss.env_ma import VSSMAEnv
@@ -41,7 +42,7 @@ class Runner:
         self.agent = DDPG(args)
         if args.restore:
             self.agent.actor.load_state_dict(torch.load(args.restore_ckp_actor))
-            self.agent.critic.load_state_dict(torch.load(args.restore_ckp_critic))
+            # self.agent.critic.load_state_dict(torch.load(args.restore_ckp_critic))
             print("Successfully load ckp from: ",args.restore_ckp_actor)
         self.replay_buffer = ReplayBuffer(self.args)
 
@@ -99,6 +100,13 @@ class Runner:
                            f"{save_dir}/{self.args.env_name}_{number}_{int(self.total_steps / 1000)}k_actor.npy")
                 torch.save(self.agent.critic.state_dict(),
                            f"{save_dir}/{self.args.env_name}_{number}_{int(self.total_steps / 1000)}k_critic.npy")
+                if args.evaluate:
+                    goal_num, opp_num, done_ball_out, done_rbt_out, done_other, avg_episode_step = match.match(number, int(self.total_steps / 1000),
+                                                                                                               args.evaluate_episode,
+                                                                                                               False)
+                    with open(f'./evaluate/output_{number}.txt', 'a+', encoding='utf-8', errors='ignore') as f:
+                        text = f"\nexp_x_k_step {int(self.total_steps / 1000)}\ngoal {goal_num}\nopp_goal {opp_num}\ndone_ball_out {done_ball_out}\ndone_rbt_out {done_rbt_out}\ndone_other {done_other}\navg_episode_step {avg_episode_step}\n================================"
+                        f.write(text)
 
             avg_train_reward = episode_reward / episode_step
             print("============epi={},step={},avg_reward={},goal_score={},noise={}==============".format(self.episode,
@@ -121,17 +129,17 @@ if __name__ == '__main__':
     parser.add_argument("--max_action", type=float, default=1.0, help="Max action")
     parser.add_argument("--buffer_size", type=int, default=int(1e7), help="The capacity of the replay buffer")
     parser.add_argument("--batch_size", type=int, default=1024, help="Batch size")
-    parser.add_argument("--hidden_dim_1", type=int, default=256,
+    parser.add_argument("--hidden_dim_1", type=int, default=128,
                         help="The number of neurons in 1st hidden layers of the neural network")
-    parser.add_argument("--hidden_dim_2", type=int, default=256,
+    parser.add_argument("--hidden_dim_2", type=int, default=128,
                         help="The number of neurons in 2rd hidden layers of the neural network")
     parser.add_argument("--noise_std_init", type=float, default=0.2, help="The std of Gaussian noise for exploration")
     parser.add_argument("--noise_std_min", type=float, default=0.05, help="The std of Gaussian noise for exploration")
     parser.add_argument("--noise_decay_steps", type=float, default=1e6,
                         help="How many steps before the noise_std decays to the minimum")
     parser.add_argument("--write_rewards", type=bool, default=True, help="Whether to write reward")
-    parser.add_argument("--lr_a", type=float, default=1e-5, help="Learning rate of actor")
-    parser.add_argument("--lr_c", type=float, default=1e-5, help="Learning rate of critic")
+    parser.add_argument("--lr_a", type=float, default=1e-4, help="Learning rate of actor")
+    parser.add_argument("--lr_c", type=float, default=1e-4, help="Learning rate of critic")
     parser.add_argument("--gamma", type=float, default=0.98, help="Discount factor")
     parser.add_argument("--tau", type=float, default=0.01, help="Softly update the target network")
     # parser.add_argument("--use_orthogonal_init", type=bool, default=True, help="Orthogonal initialization")
@@ -141,12 +149,16 @@ if __name__ == '__main__':
     parser.add_argument("--policy_update_freq", type=int, default=1, help="The frequency of policy updates")
     parser.add_argument("--display", type=bool, default=False, help="Display mode")
     parser.add_argument("--restore", type=bool, default=False, help="")
-    parser.add_argument("--restore_ckp_actor", type=str, default="models/SSLShootEnv/38/SSLShootEnv_38_2016k_actor.npy", help="")
-    parser.add_argument("--restore_ckp_critic", type=str, default="models/SSLShootEnv/38/SSLShootEnv_38_2016k_critic.npy", help="")
+    parser.add_argument("--restore_ckp_actor", type=str, default="models/SSLShootEnv/39/SSLShootEnv_39_1685k_actor.npy", help="")
+    # parser.add_argument("--restore_ckp_critic", type=str, default="models/SSLShootEnv/39/SSLShootEnv_39_1685k_critic.npy", help="")
+    parser.add_argument("--evaluate", type=bool, default=True, help="")
+    parser.add_argument("--evaluate_episode", type=int, default=1000,
+                        help="")
+
     args = parser.parse_args()
     args.noise_std_decay = (args.noise_std_init - args.noise_std_min) / args.noise_decay_steps
 
-    number = 40
+    number = 52
     runner = Runner(args, number=number)
 
     # Save args

@@ -9,7 +9,7 @@ from rsoccer_gym.ssl.ssl_gym_base import SSLBaseEnv
 from rsoccer_gym.Utils import KDTree
 
 
-class SSLShootEnv(SSLBaseEnv):
+class SSL3v3Env(SSLBaseEnv):
     """The SSL robot needs to make a goal on a field with static defenders
 
 
@@ -18,12 +18,12 @@ class SSLShootEnv(SSLBaseEnv):
             score on the positive side field, where there are 6 static defenders
             while obeying div B rules
         Observation:
-            Type: Box(4 + 7*n_robots_blue + 2*n_robots_yellow)
+            Type: Box(4 + 8*n_robots_blue + 2*n_robots_yellow)
             Normalized Bounds to [-1.2, 1.2]
             Num      Observation normalized
             0->3     Ball [X, Y, V_x, V_y]
-            4->10    id 0 Blue [X, Y, sin(theta), cos(theta), v_x, v_y, v_theta]
-            +2*i     id i Yellow Robot [X, Y]
+            4+i*7->10+i*7    id i(0-2) Blue [X, Y, sin(theta), cos(theta), v_x, v_y, v_theta]
+            24+j*5,25+j*5     id j(0-2) Yellow Robot [X, Y, v_x, v_y, v_theta]
         Actions:
             Type: Box(5, )
             Num     Action
@@ -43,13 +43,13 @@ class SSLShootEnv(SSLBaseEnv):
     """
 
     def __init__(self, field_type=2):
-        super().__init__(field_type=field_type, n_robots_blue=1,
-                         n_robots_yellow=6, time_step=0.025)
+        super().__init__(field_type=field_type, n_robots_blue=3,
+                         n_robots_yellow=3, time_step=0.025)
 
         self.action_space = gym.spaces.Box(low=-1, high=1,
-                                           shape=(4,), dtype=np.float32)
+                                           shape=(5,), dtype=np.float32)
 
-        n_obs = 4 + 8 * self.n_robots_blue + 2 * self.n_robots_yellow
+        n_obs = 4 + 7 * self.n_robots_blue + 5 * self.n_robots_yellow
         self.observation_space = gym.spaces.Box(low=-self.NORM_BOUNDS,
                                                 high=self.NORM_BOUNDS,
                                                 shape=(n_obs,),
@@ -61,7 +61,7 @@ class SSLShootEnv(SSLBaseEnv):
 
         # scale max energy rw to 1 Considering that max possible energy if max robot wheel speed sent every step
         wheel_max_rad_s = 160
-        max_steps = 200
+        max_steps = 1000
         self.energy_scale = ((wheel_max_rad_s * 4) * max_steps)
 
         # Limit robot speeds
@@ -69,8 +69,8 @@ class SSLShootEnv(SSLBaseEnv):
         self.max_w = 10
         self.kick_speed_x = 5.0
 
-        self.done_limit = None
-        print('Environment initialized')
+        self.c_robot_idx = 0
+        print('Environment initialized',"Obs:",n_obs)
 
     def reset(self):
         self.reward_shaping_total = None
@@ -78,6 +78,9 @@ class SSLShootEnv(SSLBaseEnv):
 
     def step(self, action):
         observation, reward, done, _ = super().step(action)
+        nearest_blue_robot = self._get_nearest_robot_idx([self.frame.ball.x, self.frame.ball.y], "blue")
+        print("nearest_blue_robot:", nearest_blue_robot)
+        self.c_robot_idx = nearest_blue_robot
         return observation, reward, done, self.reward_shaping_total
 
     def _frame_to_observations(self):
@@ -101,23 +104,48 @@ class SSLShootEnv(SSLBaseEnv):
             observation.append(self.norm_v(self.frame.robots_blue[i].v_x))
             observation.append(self.norm_v(self.frame.robots_blue[i].v_y))
             observation.append(self.norm_w(self.frame.robots_blue[i].v_theta))
-            observation.append(1 if self.frame.robots_blue[i].infrared else 0)
+            # observation.append(1 if self.frame.robots_blue[i].infrared else 0)
 
         for i in range(self.n_robots_yellow):
             observation.append(self.norm_pos(self.frame.robots_yellow[i].x))
             observation.append(self.norm_pos(self.frame.robots_yellow[i].y))
+            observation.append(self.norm_v(self.frame.robots_yellow[i].v_x))
+            observation.append(self.norm_v(self.frame.robots_yellow[i].v_y))
+            observation.append(self.norm_w(self.frame.robots_yellow[i].v_theta))
 
         return np.array(observation, dtype=np.float32)
 
     def _get_commands(self, actions):
         commands = []
 
-        angle = self.frame.robots_blue[0].theta
+        # Controlled robot
+        angle = self.frame.robots_blue[self.c_robot_idx].theta
         v_x, v_y, v_theta = self.convert_actions(actions, np.deg2rad(angle))
         cmd = Robot(yellow=False, id=0, v_x=v_x, v_y=v_y, v_theta=v_theta,
                     kick_v_x=self.kick_speed_x if actions[3] > 0 else 0.,
-                    dribbler=True)
+                    dribbler=True if actions[4] > 0 else False)
         commands.append(cmd)
+
+        # Blue robot
+        for i in range(self.n_robots_blue):
+            if i != self.c_robot_idx:
+                actions = self.action_space.sample()
+                angle = self.frame.robots_blue[i].theta
+                v_x, v_y, v_theta = self.convert_actions(actions, np.deg2rad(angle))
+                cmd = Robot(yellow=False, id=i, v_x=v_x, v_y=v_y, v_theta=v_theta,
+                            kick_v_x=self.kick_speed_x if actions[3] > 0 else 0.,
+                            dribbler=True if actions[4] > 0 else False)
+                commands.append(cmd)
+
+        # Yellow robot
+        for i in range(self.n_robots_yellow):
+            actions = self.action_space.sample()
+            angle = self.frame.robots_yellow[i].theta
+            v_x, v_y, v_theta = self.convert_actions(actions, np.deg2rad(angle))
+            cmd = Robot(yellow=True, id=i, v_x=v_x, v_y=v_y, v_theta=v_theta,
+                        kick_v_x=self.kick_speed_x if actions[3] > 0 else 0.,
+                        dribbler=True if actions[4] > 0 else False)
+            commands.append(cmd)
 
         return commands
 
@@ -142,13 +170,13 @@ class SSLShootEnv(SSLBaseEnv):
         if self.reward_shaping_total is None:
             self.reward_shaping_total = {
                 'goal': 0,
-                'done_robot_in_gk_area': 0,
+                'rbt_in_gk_area': 0,
                 'done_ball_out': 0,
                 'done_ball_out_right': 0,
-                'done_robot_out': 0,
-                'rw_ball_dist': 0,
-                'rw_ball_grad': 0,
-                'rw_energy': 0
+                'done_rbt_out': 0,
+                'ball_dist': 0,
+                'ball_grad': 0,
+                'energy': 0
             }
         reward = 0
         done = False
@@ -162,42 +190,42 @@ class SSLShootEnv(SSLBaseEnv):
 
         ball = self.frame.ball
         robot = self.frame.robots_blue[0]
-        if robot.x < self.done_limit or abs(robot.y) > half_wid or abs(robot.x) > half_len:
+
+        def robot_in_gk_area(rbt):
+            return rbt.x > half_len - pen_len and abs(rbt.y) < half_pen_wid
+
+        # Check if robot exited field right side limits
+        if robot.x < -0.2 or abs(robot.y) > half_wid:
             done = True
-            self.reward_shaping_total['done_robot_out'] += 1
-            reward = 0
-        elif ball.x < self.done_limit or abs(ball.y) > half_wid:
+            self.reward_shaping_total['done_rbt_out'] += 1
+        # If flag is set, end episode if robot enter gk area
+        elif robot_in_gk_area(robot):
+            done = True
+            self.reward_shaping_total['rbt_in_gk_area'] += 1
+        # Check ball for ending conditions
+        elif ball.x < 0 or abs(ball.y) > half_wid:
             done = True
             self.reward_shaping_total['done_ball_out'] += 1
-            reward = 0
-        elif ball.x < -half_len or abs(ball.y) > half_wid:
-            done = True
-            if abs(ball.y) < half_goal_wid:
-                reward = -20
-                self.reward_shaping_total['goal'] -= 1
-            else:
-                self.reward_shaping_total['done_ball_out'] += 1
-                reward = 0
         elif ball.x > half_len:
             done = True
             if abs(ball.y) < half_goal_wid:
-                reward = 20
+                reward = 5
                 self.reward_shaping_total['goal'] += 1
             else:
                 reward = 0
-                self.reward_shaping_total['done_ball_out'] += 1
-
+                self.reward_shaping_total['done_ball_out_right'] += 1
         elif self.last_frame is not None:
-            # ball_dist_rw = self.__ball_dist_rw() / self.ball_dist_scale
-            # self.reward_shaping_total['ball_dist'] += ball_dist_rw
+            ball_dist_rw = self.__ball_dist_rw() / self.ball_dist_scale
+            self.reward_shaping_total['ball_dist'] += ball_dist_rw
 
             ball_grad_rw = self.__ball_grad_rw() / self.ball_grad_scale
-            self.reward_shaping_total['rw_ball_grad'] += ball_grad_rw
+            self.reward_shaping_total['ball_grad'] += ball_grad_rw
 
             energy_rw = -self.__energy_pen() / self.energy_scale
-            self.reward_shaping_total['rw_energy'] += energy_rw
+            self.reward_shaping_total['energy'] += energy_rw
 
             reward = reward \
+                     + ball_dist_rw \
                      + ball_grad_rw \
                      + energy_rw
 
@@ -213,15 +241,17 @@ class SSLShootEnv(SSLBaseEnv):
         half_pen_wid = self.field.penalty_width / 2
 
         def x():
-            return random.uniform(-self.field.length / 2+0.2,self.field.length / 2-0.2)
+            return random.uniform(0.2, half_len - 0.1)
 
         def y():
-            return random.uniform(-self.field.width/ 2+0.2,self.field.width / 2-0.2)
+            return random.uniform(-half_wid + 0.1, half_wid - 0.1)
 
         def theta():
             return random.uniform(0, 360)
 
         pos_frame: Frame = Frame()
+
+        pos_frame.robots_blue[0] = Robot(x=0., y=0., theta=0.)
 
         def in_gk_area(obj):
             return obj.x > half_len - pen_len and abs(obj.y) < half_pen_wid
@@ -229,22 +259,13 @@ class SSLShootEnv(SSLBaseEnv):
         pos_frame.ball = Ball(x=x(), y=y())
         while in_gk_area(pos_frame.ball):
             pos_frame.ball = Ball(x=x(), y=y())
+
+        min_dist = 0.2
+
         places = KDTree()
         places.insert((pos_frame.ball.x, pos_frame.ball.y))
 
-        r = 0.09
-        angle = theta()
-        robot_x = pos_frame.ball.x + r * math.cos(np.deg2rad(angle))
-        robot_y = pos_frame.ball.y + r * math.sin(np.deg2rad(angle))
-        self.done_limit = robot_x- 0.2
-        pos_frame.robots_blue[0] = Robot(
-            x=robot_x, y=robot_y, theta=angle + 180
-        )
-        places.insert((pos_frame.ball.x, pos_frame.ball.y))
-        min_dist = 0.2
         for i in range(self.n_robots_blue):
-            if i == 0:
-                continue
             pos = (x(), y())
             while places.get_nearest(pos)[1] < min_dist:
                 pos = (x(), y())
@@ -261,6 +282,26 @@ class SSLShootEnv(SSLBaseEnv):
             pos_frame.robots_yellow[i] = Robot(x=pos[0], y=pos[1], theta=theta())
 
         return pos_frame
+
+    def _get_nearest_robot_idx(self, target, team, except_idx=None):
+        robots_distance_to_target = {}
+        for idx in range(self.n_robots_blue if team == "blue" else self.n_robots_yellow):
+            target = np.array(target)
+            if team == "blue":
+                robot = np.array([self.frame.robots_blue[idx].x,
+                                  self.frame.robots_blue[idx].y])
+            elif team == "yellow":
+                robot = np.array([self.frame.robots_yellow[idx].x,
+                                  self.frame.robots_yellow[idx].y])
+            else:
+                Exception("team must be blue or yellow")
+            robot_distance_to_target = np.sqrt(sum((robot - target) ** 2 for robot, target in zip(robot, target)))
+            robots_distance_to_target[idx] = robot_distance_to_target
+        sorted_list = sorted(robots_distance_to_target.items(), key=lambda kv: [kv[1], kv[0]])
+        if except_idx is not None:
+            if sorted_list[0][0] == except_idx:
+                return sorted_list[1][0]
+        return sorted_list[0][0]
 
     def __ball_dist_rw(self):
         assert (self.last_frame is not None)

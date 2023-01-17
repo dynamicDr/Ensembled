@@ -1,0 +1,17 @@
+
+exp_x_k_step 143
+goal 69
+opp_goal 0
+done_ball_out 518
+done_rbt_out 409
+done_other 4
+avg_episode_step 73.748
+================================
+exp_x_k_step 292
+goal 80
+opp_goal 0
+done_ball_out 452
+done_rbt_out 465
+done_other 3
+avg_episode_step 74.007
+================================

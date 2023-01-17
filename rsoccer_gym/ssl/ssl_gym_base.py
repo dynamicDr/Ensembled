@@ -41,7 +41,7 @@ class SSLBaseEnv(gym.Env):
         self.max_v = max_wheel_rad_s * self.field.rbt_wheel_radius
         # 0.04 = robot radius (0.09) + wheel thicknees (0.005)
         self.max_w = np.rad2deg(self.max_v / 0.095)
-
+        print("self.max_w",self.max_w)
         # Initiate 
         self.frame: Frame = None
         self.last_frame: Frame = None

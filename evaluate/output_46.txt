@@ -1,0 +1,193 @@
+
+exp_x_k_step 67
+goal 29
+opp_goal 39
+done_ball_out 792
+done_rbt_out 133
+done_other 7
+avg_episode_step 34.849
+================================
+exp_x_k_step 139
+goal 18
+opp_goal 34
+done_ball_out 824
+done_rbt_out 108
+done_other 16
+avg_episode_step 36.605
+================================
+exp_x_k_step 210
+goal 42
+opp_goal 44
+done_ball_out 780
+done_rbt_out 126
+done_other 8
+avg_episode_step 36.655
+================================
+exp_x_k_step 280
+goal 24
+opp_goal 32
+done_ball_out 823
+done_rbt_out 112
+done_other 9
+avg_episode_step 36.41
+================================
+exp_x_k_step 356
+goal 30
+opp_goal 36
+done_ball_out 827
+done_rbt_out 92
+done_other 15
+avg_episode_step 40.286
+================================
+exp_x_k_step 431
+goal 24
+opp_goal 42
+done_ball_out 843
+done_rbt_out 73
+done_other 18
+avg_episode_step 38.725
+================================
+exp_x_k_step 504
+goal 35
+opp_goal 31
+done_ball_out 830
+done_rbt_out 82
+done_other 22
+avg_episode_step 39.337
+================================
+exp_x_k_step 579
+goal 25
+opp_goal 34
+done_ball_out 841
+done_rbt_out 81
+done_other 19
+avg_episode_step 38.591
+================================
+exp_x_k_step 654
+goal 22
+opp_goal 36
+done_ball_out 833
+done_rbt_out 93
+done_other 16
+avg_episode_step 38.193
+================================
+exp_x_k_step 733
+goal 32
+opp_goal 30
+done_ball_out 835
+done_rbt_out 89
+done_other 14
+avg_episode_step 35.69
+================================
+exp_x_k_step 806
+goal 29
+opp_goal 33
+done_ball_out 830
+done_rbt_out 93
+done_other 15
+avg_episode_step 36.362
+================================
+exp_x_k_step 876
+goal 35
+opp_goal 37
+done_ball_out 824
+done_rbt_out 94
+done_other 10
+avg_episode_step 36.085
+================================
+exp_x_k_step 952
+goal 25
+opp_goal 42
+done_ball_out 828
+done_rbt_out 95
+done_other 10
+avg_episode_step 34.937
+================================
+exp_x_k_step 1023
+goal 35
+opp_goal 41
+done_ball_out 825
+done_rbt_out 89
+done_other 10
+avg_episode_step 36.048
+================================
+exp_x_k_step 1097
+goal 22
+opp_goal 29
+done_ball_out 839
+done_rbt_out 101
+done_other 9
+avg_episode_step 34.453
+================================
+exp_x_k_step 1172
+goal 35
+opp_goal 34
+done_ball_out 806
+done_rbt_out 116
+done_other 9
+avg_episode_step 36.314
+================================
+exp_x_k_step 1247
+goal 34
+opp_goal 28
+done_ball_out 799
+done_rbt_out 125
+done_other 14
+avg_episode_step 37.557
+================================
+exp_x_k_step 1324
+goal 32
+opp_goal 36
+done_ball_out 809
+done_rbt_out 103
+done_other 20
+avg_episode_step 39.996
+================================
+exp_x_k_step 1399
+goal 34
+opp_goal 38
+done_ball_out 819
+done_rbt_out 84
+done_other 25
+avg_episode_step 38.036
+================================
+exp_x_k_step 1475
+goal 34
+opp_goal 36
+done_ball_out 813
+done_rbt_out 97
+done_other 20
+avg_episode_step 37.475
+================================
+exp_x_k_step 1546
+goal 34
+opp_goal 37
+done_ball_out 826
+done_rbt_out 89
+done_other 14
+avg_episode_step 34.973
+================================
+exp_x_k_step 1621
+goal 29
+opp_goal 35
+done_ball_out 832
+done_rbt_out 92
+done_other 12
+avg_episode_step 36.348
+================================
+exp_x_k_step 1698
+goal 19
+opp_goal 41
+done_ball_out 826
+done_rbt_out 101
+done_other 13
+avg_episode_step 37.25
+================================
+exp_x_k_step 1773
+goal 29
+opp_goal 39
+done_ball_out 830
+done_rbt_out 79
+done_other 23
+avg_episode_step 37.796
+================================
